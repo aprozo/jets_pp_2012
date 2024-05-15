@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 anytime i type something in “$ “ it means that you type whatever is after the $ in your terminal. 
 
 1. login to RCF 
@@ -29,3 +30,6 @@ submit.xml - Line 35 allows us to enter the container. This is the equivalent of
 container.sh (/gpfs01/star/pwg/youqi/run12/ppRun12_analysis_code/container.sh) - this contains the command lines to run the code and takes in arguments from submit.xml. $1 corresponds to the data_file variable in submit.xml
 
 To run the code, create a /submit directory in your work directory, copy submit.py and submit.xml files from my directory, edit the code in those files (so that they read the file list you have, save output to your directory, etc). Create directories /scheduler/report, /scheduler/csh and /scheduler/list under /submit (see lines 70-72 of the xml file). Copy over and modify container.sh (for me this file was put outside the submit directory). Finally, do "python submit/submit.py" to submit the jobs.
+=======
+# jets_pp_2012
+>>>>>>> c2dbe548387d7857e3a68874cb869431aa93fc64
