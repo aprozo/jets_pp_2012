@@ -1,0 +1,8 @@
+*.root
+ppRun12Datapicos/
+*dataset
+*session.xml
+*root
+.vscode/
+.sl73_gcc485/
+star_star.simg
