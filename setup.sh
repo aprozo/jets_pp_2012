@@ -1,4 +1,5 @@
 #!/bin/bash
+source /usr/local/root/bin/thisroot.sh
 
 export FASTJETDIR=/usr/local/fastjet
 #export PYTHIA8DIR=/gpfs01/star/pwg/elayavalli/pythia8303

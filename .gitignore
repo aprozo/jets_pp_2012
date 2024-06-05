@@ -4,6 +4,7 @@ ppRun12Datapicos/ppHT2Run12
 ppRun12Datapicos/ppJP2Run12
 ppRun12Datapicos/submit/gen
 ppRun12Datapicos/submit/log
+src/obj
 *.log
 *.out
 *.err
