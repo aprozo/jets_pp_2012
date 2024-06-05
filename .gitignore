@@ -1,5 +1,16 @@
 *.root
-ppRun12Datapicos/
+ppRun12Datapicos/ppMBRun12
+ppRun12Datapicos/ppHT2Run12
+ppRun12Datapicos/ppJP2Run12
+ppRun12Datapicos/submit/gen
+ppRun12Datapicos/submit/log
+*.log
+*.out
+*.err
+*.csh
+treesplit*.list
+*.condor
+*.report
 *dataset
 *session.xml
 *root

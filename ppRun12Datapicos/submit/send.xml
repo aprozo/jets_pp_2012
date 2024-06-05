@@ -1,0 +1,30 @@
+<job  name="treesplit" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false" >
+	
+<input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/ppRun12Datapicos/submit/filelist.list" nFiles="all" />
+<stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/ppRun12Datapicos/submit/log/$JOBID.out" />
+<stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/ppRun12Datapicos/submit/log/$JOBID.err" />
+        <command>
+	        setup 64b
+                setup root 6.16.00
+	        date
+                echo "starting splitFiles.sh"
+                eval set filename = $INPUTFILE0
+                echo $filename 
+                chmod +x splitFiles.sh
+	        ./splitFiles.sh $filename 
+                echo "splitFiles.sh done"
+        </command>
+        
+        <Generator> 
+                <Location>/gpfs01/star/pwg/prozorov/jets_pp_2012/ppRun12Datapicos/submit/gen/</Location> 
+        </Generator>
+        <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/ppRun12Datapicos/ppMBRun12/splitFiles/" />
+        <output fromScratch="*.log" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/ppRun12Datapicos/submit/log/" />
+        
+        <SandBox>
+		<Package> 
+			<File>file:./splitFiles.sh</File> 
+		</Package>
+	</SandBox>
+
+</job>
