@@ -32,7 +32,7 @@ nhitfrac:   selected track nhit fraction min
 <job>
 
   <command>
-    singularity exec -e -B /gpfs01 -B /star -B /star/u/prozorov star_star.simg bash /gpfs01/star/pwg/prozorov/jets_pp_2012/container.sh &data_file;
+    singularity exec -e -B /gpfs01 -B /star star_star.simg bash /gpfs01/star/pwg/prozorov/jets_pp_2012/container.sh &data_file;
     mv $SCRATCH/*.root &out;
   </command>
 
@@ -48,7 +48,7 @@ nhitfrac:   selected track nhit fraction min
   <SandBox installer="ZIP">
     <Package name="run12data">
       <File>file:./bin/RunppTestAna</File>
-      <File>file:./data_file.list</File>
+      <!-- <File>file:./data_file.list</File> -->
       <File>file:./runimage.sh</File>
       <File>file:./star_star.simg</File>
       <File>file:./container.sh</File>
@@ -63,7 +63,7 @@ nhitfrac:   selected track nhit fraction min
     <ListLocation>./submit/scheduler/list/</ListLocation>
   </Generator>
 
-  <stdout URL="file:&log;/&data_file;.log" />
-  <stderr URL="file:&log;/&data_file;.err" />
+  <stdout URL="file:&log;/&data_name;.log" />
+  <stderr URL="file:&log;/&data_name;.err" />
 
 </job>

@@ -7,7 +7,7 @@
 # last file will have what is left after nsplit-1
 
 nevents=54500000 # approximate number of events
-nsplit=100       # number of files to split into
+nsplit=25        # number of files to split into
 nevents_per_file=$((nevents / nsplit))
 input_file=$1
 

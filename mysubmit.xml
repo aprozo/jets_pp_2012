@@ -1,0 +1,47 @@
+<job  name="jets" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false" >
+	
+<input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/data_file_250files.list" nFiles="all" />
+<stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/$FILEBASENAME.out" />
+<stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/$FILEBASENAME.err" />
+        <command>
+        @ nFile=0
+        while ( $nFile &lt; $INPUTFILECOUNT )
+        eval set filename = '$INPUTFILE'$nFile 
+        # put your script here, with filename as input file
+        echo $filename
+        echo "starting singularity"
+        singularity exec -e -B $SCRATCH -B /gpfs01 star_star.simg bash container.sh $filename 
+        @ nFile++
+        end
+
+        </command>
+<stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/$FILEBASENAME.out" />
+<stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/$FILEBASENAME.err" />
+
+        <ResourceUsage>
+                <Times>
+                        <MaxWallTime>3</MaxWallTime>
+                </Times>
+                <Memory>
+                        <MinMemory>4500</MinMemory>
+                </Memory>
+        </ResourceUsage>
+
+        <Generator> 
+                <Location>/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/scheduler/gen/</Location> 
+        </Generator>
+        <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/output/out/" />
+        
+        <SandBox installer="ZIP">
+        <Package name="run12data">
+            <File>file:./star_star.simg</File>
+            <File>file:./container.sh</File>
+            <File>file:./setup.sh</File>
+            <File>file:./Makefile</File>  
+            <File>file:./src/</File>          
+            <File>file:./bin/RunppTestAna</File>
+		</Package>
+	</SandBox>
+
+</job>
+

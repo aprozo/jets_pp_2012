@@ -47,6 +47,8 @@ def main(args):
     submit_args = 'out=' + out_dir
     submit_args = submit_args + ',log=' + log_dir
     submit_args = submit_args + ',data_file=' + str(data_file)
+    data_name   = os.path.basename(data_file)
+    submit_args = submit_args + ',data_name=' +  str(data_name)
    
     star_submit = 'star-submit-template '
     star_submit = star_submit + '-template ' + xml_file

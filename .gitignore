@@ -4,7 +4,8 @@ ppRun12Datapicos/ppHT2Run12
 ppRun12Datapicos/ppJP2Run12
 ppRun12Datapicos/submit/gen
 ppRun12Datapicos/submit/log
-src/obj
+src/obj/*.o
+bin/
 *.log
 *.out
 *.err
@@ -14,10 +15,15 @@ treesplit*.list
 *.report
 *dataset
 *session.xml
+schedTemplateExp.xml
 *root
 .vscode/
 .sl73_gcc485/
 star_star.simg
+run12data.package/
+*.zip
+submit/scheduler/
+bin/
 
 # Prerequisites
 *.d
@@ -51,3 +57,4 @@ star_star.simg
 *.exe
 *.out
 *.app
+bin/RunppTestAna
