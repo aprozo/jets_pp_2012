@@ -47,7 +47,7 @@ nhitfrac:   selected track nhit fraction min
 
   <SandBox installer="ZIP">
     <Package name="run12data">
-      <File>file:./bin/RunppTestAna</File>
+      <File>file:./bin/RunppAna</File>
       <!-- <File>file:./data_file.list</File> -->
       <File>file:./runimage.sh</File>
       <File>file:./star_star.simg</File>

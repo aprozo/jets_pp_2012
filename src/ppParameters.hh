@@ -5,8 +5,8 @@
    @date Mar 23, 2017
  */
 
-#ifndef PPTESTPARAMETERS_HH
-#define PPTESTPARAMETERS_HH
+#ifndef PPPARAMETERS_HH
+#define PPPARAMETERS_HH
 
 #include "JetAnalyzer.hh"
 
@@ -35,7 +35,7 @@ enum class EVENTRESULT
   JETSFOUND
 };
 
-class ppTestParameters
+class ppParameters
 {
 
 public:
@@ -118,4 +118,4 @@ public:
   // Only putting it here so that it can be initialized in the analysis class and then used
   TString OutFileName = "TmpResult.root"; ///< Output file
 };
-#endif // PPTESTPARAMETERS_HH
+#endif // PPPARAMETERS_HH

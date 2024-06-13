@@ -62,7 +62,7 @@ BDIR          = bin
 ################### Remake when these headers are touched #####################
 ###############################################################################
 INCS = $(SDIR)/JetAnalyzer.hh
-INCS = $(SDIR)/ppTestParameters.hh $(SDIR)/ppTestAnalysis.hh
+INCS = $(SDIR)/ppParameters.hh $(SDIR)/ppAnalysis.hh
 
 ###############################################################################
 # standard rules
@@ -81,7 +81,7 @@ $(BDIR)/%  : $(ODIR)/%.o
 ###############################################################################
 ############################# Main Targets ####################################
 ###############################################################################
-all    : $(BDIR)/RunppTestAna
+all    : $(BDIR)/RunppAna
 #	 doxy
 
 $(SDIR)/dict.cxx 		: $(SDIR)/ktTrackEff.hh
@@ -90,10 +90,10 @@ $(SDIR)/dict.cxx 		: $(SDIR)/ktTrackEff.hh
 $(ODIR)/dict.o 		: $(SDIR)/dict.cxx
 $(ODIR)/ktTrackEff.o 	: $(SDIR)/ktTrackEff.cxx $(SDIR)/ktTrackEff.hh
 $(ODIR)/JetAnalyzer.o   : ${SDIR}/JetAnalyzer.cxx ${INCS} ${SDIR}/JetAnalyzer.hh
-$(ODIR)/ppTestAnalysis.o : $(SDIR)/ppTestAnalysis.cxx $(INCS) $(SDIR)/ppTestAnalysis.hh
+$(ODIR)/ppAnalysis.o : $(SDIR)/ppAnalysis.cxx $(INCS) $(SDIR)/ppAnalysis.hh
 
 # bin
-$(BDIR)/RunppTestAna	:		$(ODIR)/RunppTestAna.o	$(ODIR)/JetAnalyzer.o	$(ODIR)/ppTestAnalysis.o  
+$(BDIR)/RunppAna	:		$(ODIR)/RunppAna.o	$(ODIR)/JetAnalyzer.o	$(ODIR)/ppAnalysis.o  
 ###############################################################################
 ##################################### MISC ####################################
 ###############################################################################

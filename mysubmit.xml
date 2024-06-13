@@ -1,6 +1,6 @@
 <job  name="jets" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false" >
 	
-<input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/data_file_250files.list" nFiles="all" />
+<input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/data_file_&trigger.list" nFiles="all" />
 <stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/$FILEBASENAME.out" />
 <stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/$FILEBASENAME.err" />
         <command>
@@ -30,7 +30,7 @@
         <Generator> 
                 <Location>/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/scheduler/gen/</Location> 
         </Generator>
-        <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/output/out/" />
+        <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/output/&trigger/" />
         
         <SandBox installer="ZIP">
         <Package name="run12data">
@@ -39,7 +39,7 @@
             <File>file:./setup.sh</File>
             <File>file:./Makefile</File>  
             <File>file:./src/</File>          
-            <File>file:./bin/RunppTestAna</File>
+            <File>file:./bin/RunppAna</File>
 		</Package>
 	</SandBox>
 

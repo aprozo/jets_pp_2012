@@ -9,11 +9,12 @@ input_file=${1}
 output_file=$(basename $input_file)
 
 make
-./bin/RunppTestAna \
+
+./bin/RunppAna \
     -i $input_file \
     -intype pico \
     -c JetTree \
-    -trig ppJP2 \
+    -trig ppMB \
     -o tree_$output_file \
     -N -1 \
     -pj 0.001 50 \

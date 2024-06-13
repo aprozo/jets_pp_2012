@@ -3,11 +3,11 @@
 # input files sum0.root to sum9.root
 # approximate nevents = 54500000
 # split each file into 100 files
-# each file will have 54500000/100 = 545000 events
+# each file will have 54500000/100 =    545000 events
 # last file will have what is left after nsplit-1
 
-nevents=54500000 # approximate number of events
-nsplit=25        # number of files to split into
+nevents=13250000 # approximate number of events
+nsplit=70        # number of files to split into
 nevents_per_file=$((nevents / nsplit))
 input_file=$1
 

@@ -1,12 +1,12 @@
-/* @file ppTestAnalysis.cxx
+/* @file ppAnalysis.cxx
     @author Raghav Kunnawalkam Elayavalli
     @version Revision 1.0
-    @brief test pp analysis for Run12 data and embedding 
+    @brief  pp analysis for Run12 data and embedding 
     @details Uses JetAnalyzer objects
     @date March 16, 2022
 */
 
-#include "ppTestAnalysis.hh"
+#include "ppAnalysis.hh"
 #include <stdlib.h>     // for getenv, atof, atoi
 
 
@@ -15,7 +15,7 @@ using std::cerr;
 using std::endl;
 
 // Standard ctor
-ppTestAnalysis::ppTestAnalysis ( const int argc, const char** const argv )
+ppAnalysis::ppAnalysis ( const int argc, const char** const argv )
 {
   // Parse arguments
   // ---------------
@@ -229,14 +229,14 @@ ppTestAnalysis::ppTestAnalysis ( const int argc, const char** const argv )
   SmearPt = new TF1( "SmearPt","gaus(0)",-1,1);
 }
 //----------------------------------------------------------------------
-ppTestAnalysis::~ppTestAnalysis(){
+ppAnalysis::~ppAnalysis(){
   if (pJA){
     delete pJA; pJA=0;
   }  
 }
 
 //----------------------------------------------------------------------
-bool ppTestAnalysis::InitChains(){
+bool ppAnalysis::InitChains(){
 
   // For trees of TStarJetVector
   // (like a previous result)
@@ -276,7 +276,7 @@ bool ppTestAnalysis::InitChains(){
 }
 //----------------------------------------------------------------------
 // Main routine for one event.
-EVENTRESULT ppTestAnalysis::RunEvent (){
+EVENTRESULT ppAnalysis::RunEvent (){
   // cout << "-----------------------" << endl;
   // cout << "Entering PpZgAnalysis::RunEvent " << endl;
   TStarJetVector* sv;
@@ -539,7 +539,7 @@ void InitializeReader(  std::shared_ptr<TStarJetPicoReader> pReader, const TStri
 }
 //----------------------------------------------------------------------
 // Helper to deal with repetitive stuff
-shared_ptr<TStarJetPicoReader> SetupReader ( TChain* chain, const ppTestParameters& pars ){
+shared_ptr<TStarJetPicoReader> SetupReader ( TChain* chain, const ppParameters& pars ){
   TStarJetPicoDefinitions::SetDebugLevel(0); // 10 for more output
 
   shared_ptr<TStarJetPicoReader> pReader = make_shared<TStarJetPicoReader>();

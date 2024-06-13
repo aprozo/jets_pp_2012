@@ -1,16 +1,16 @@
-/* @file ppTestAnalysis.hh
+/* @file ppAnalysis.hh
     @author Raghav Kunnawalkam Elayavalli 
     @version Revision 1.0
-    @brief test analysis class 
+    @brief analysis class 
     @details Uses JetAnalyzer objects
     @date March 16, 2022
 */
 
 
-#ifndef __PPTESTANALYSIS_HH
-#define __PPTESTANALYSIS_HH
+#ifndef __PPANALYSIS_HH
+#define __PPANALYSIS_HH
 
-#include "ppTestParameters.hh"
+#include "ppParameters.hh"
 #include "JetAnalyzer.hh"
 
 #include "TF1.h"
@@ -126,13 +126,13 @@ static const Selector OnlyNeutral = NotGhost && SelectorChargeRange( 0, 0);     
 /*
    The main class
  */
-class ppTestAnalysis {
+class ppAnalysis {
 
 private :
 
   // These need to be initialized
   // ----------------------------
-  ppTestParameters pars;   ///< container to have all analysis parameters in one place
+  ppParameters pars;   ///< container to have all analysis parameters in one place
   
   // Internal
   // --------  
@@ -209,11 +209,11 @@ public:
       \param argc: number of arguments
       \param argv: string array of command line options
    */
-  ppTestAnalysis ( const int argc, const char** const  );
+  ppAnalysis ( const int argc, const char** const  );
 
   /* Destructor. Clean things up
    */
-  virtual ~ppTestAnalysis();
+  virtual ~ppAnalysis();
 
   /* Decoupled chain initialization for readability
    */
@@ -240,7 +240,7 @@ public:
 
   // Getters and Setters
   // -------------------
-  inline ppTestParameters& GetPars()         { return pars; };
+  inline ppParameters& GetPars()         { return pars; };
 
   /// Get jet radius
   inline double GetR ( )                   { return pars.R; };
@@ -370,11 +370,11 @@ TStarJetPicoReader GetReader ( TString ChainPattern="~putschke/Data/Pico_ppHT/*.
 
 /* Slightly different, preferred version of GetReader
  */
-shared_ptr<TStarJetPicoReader> SetupReader ( TChain* chain, const ppTestParameters& pars );
+shared_ptr<TStarJetPicoReader> SetupReader ( TChain* chain, const ppParameters& pars );
 
 
 /* For use with GeantMc data
  */
 void TurnOffCuts ( std::shared_ptr<TStarJetPicoReader> pReader );
   
-#endif // __PPTESTANALYSIS_HH
+#endif // __PPANALYSIS_HH
