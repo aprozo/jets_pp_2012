@@ -5,10 +5,8 @@ rm -r run12data*.package
 rm run12*.zip
 rm schedTemplateExp.xml
 rm -r sched*.package
-
 # echo "cleaning previous output"
 # rm output/HT/*.root
-
 echo "additional out/ report/ csh/"
 rm sumbit/scheduler/csh/*
 rm sumbit/scheduler/list/*
@@ -27,7 +25,7 @@ for data_type in ${data_types[@]}; do
         echo "data_file_$data_type.list does not exist"
         break
     fi
-    star-submit-template -template mysubmit.xml -entities trigger=$data_type
+    star-submit-template -template submit/mysubmit.xml -entities trigger=$data_type
 done
 
 # wait for jobs to finish using condor_q
@@ -36,5 +34,8 @@ done
 
 for data_type in ${data_types[@]}; do
     singularity exec -e -B /gpfs01 -B /star star_star.simg \
-        bash merge.sh $data_type
+        bash scripts/merge.sh $data_type
 done
+
+
+
