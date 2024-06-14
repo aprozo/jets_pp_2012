@@ -59,17 +59,16 @@ int treeAna(TString inputFileName = "output/output_jets_MB.root")
   int eventid;
   int runid;
   double eventWeight;
+  int njets;
   jetTree->SetBranchAddress("eventid", &eventid);
   jetTree->SetBranchAddress("runid", &runid);
   jetTree->SetBranchAddress("weight", &eventWeight);
-
-  int njets;
   jetTree->SetBranchAddress("njets", &njets);
 
   TFile *fout = new TFile(outputName, "RECREATE");
 
-  TH1D *hJetPt = new TH1D("hJetPt", "", 75, 5, 80);
-  TH1D *hJetPt_Fine = new TH1D("hJetPt_Fine", "", 700000, 10, 80);
+  TH1D *hJetPt = new TH1D("hJetPt", "", 80, 0, 80);
+  TH1D *hJetPt_Fine = new TH1D("hJetPt_Fine", "", 800000, 0, 80);
   TH2D *hJetEtaPhi = new TH2D("hJetEtaPhi", "", 1000, -1, 1, 1000, 0, 6.3);
 
   //! Loop over measured level
@@ -113,6 +112,7 @@ int treeAna(TString inputFileName = "output/output_jets_MB.root")
       double jetPhi = resJet.orig.phi();
       hJetEtaPhi->Fill(jetEta, jetPhi, eventWeight);
     }
+
     ResultStructs.clear();
   } //! event loop
 

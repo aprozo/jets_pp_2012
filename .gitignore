@@ -21,6 +21,7 @@ schedTemplateExp.xml
 .sl73_gcc485/
 star_star.simg
 run12data.package/
+run12ana.package/
 *.zip
 submit/scheduler/
 bin/
