@@ -7,14 +7,33 @@ export JETREADER=/usr/local/jetreader_build
 export LD_LIBRARY_PATH=/usr/local/jetreader_build/lib:/lib/:/usr/local/eventStructuredAu:/usr/local/RooUnfold:/usr/local/fastjet/lib:/usr/local/root/lib::/.singularity.d/libs
 input_file=${1}
 output_file=$(basename $input_file)
+data_type=${2}
 
 make
 
+treeType=JetTree
+picoType=pico
+trigger=pp
+
+if [[ $data_type = HT2 ]]; then
+    trigger=ppHT
+fi
+
+if [[ $data_type = JP2 ]]; then
+    trigger=ppJP
+fi
+
+if [[ $data_type = mc ]]; then
+    treeType=JetTreeMc
+    picoType=mcpico
+    trigger=all
+fi
+
 ./bin/RunppAna \
     -i $input_file \
-    -intype pico \
-    -c JetTree \
-    -trig ppMB \
+    -intype $picoType \
+    -c $treeType \
+    -trig $trigger \
     -o tree_$output_file \
     -N -1 \
     -pj 0.001 50 \

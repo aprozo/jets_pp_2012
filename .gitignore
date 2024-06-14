@@ -42,6 +42,8 @@ bin/
 *.so
 *.dylib
 *.dll
+*.pcm
+*.d
 
 # Fortran module files
 *.mod
