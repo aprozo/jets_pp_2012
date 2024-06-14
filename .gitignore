@@ -5,8 +5,9 @@ ppRun12Datapicos/ppJP2Run12
 ppRun12Datapicos/submit/gen
 ppRun12Datapicos/submit/log
 src/obj/*.o
-bin/
 *.log
+*.pdf
+output/
 *.out
 *.err
 *.csh
@@ -20,8 +21,7 @@ schedTemplateExp.xml
 .vscode/
 .sl73_gcc485/
 star_star.simg
-run12data.package/
-run12ana.package/
+*.package/
 *.zip
 submit/scheduler/
 bin/
@@ -60,4 +60,3 @@ bin/
 *.exe
 *.out
 *.app
-bin/RunppTestAna

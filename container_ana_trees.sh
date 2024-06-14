@@ -7,4 +7,6 @@ export JETREADER=/usr/local/jetreader_build
 export LD_LIBRARY_PATH=/usr/local/jetreader_build/lib:/lib/:/usr/local/eventStructuredAu:/usr/local/RooUnfold:/usr/local/fastjet/lib:/usr/local/root/lib::/.singularity.d/libs
 
 input_file=${1}
-root -l 'macros/treeAna.cxx+("'$input_file'")'
+output_file=${2}
+
+root -l './macros/treeAna.cxx+("'$input_file'", "'$output_file'")'

@@ -13,7 +13,8 @@ make
 
 treeType=JetTree
 picoType=pico
-trigger=all
+trigger=pp
+geantnum=0
 
 if [[ $data_type = HT2 ]]; then
     trigger=ppHT
@@ -23,10 +24,14 @@ if [[ $data_type = JP2 ]]; then
     trigger=ppJP
 fi
 
+if [[ $data_type = geant ]]; then
+    geantnum=1
+fi
+
 if [[ $data_type = mc ]]; then
     treeType=JetTreeMc
     picoType=mcpico
-    trigger=all
+    trigger=All
 fi
 
 ./bin/RunppAna \
@@ -42,4 +47,4 @@ fi
     -ec 1 \
     -R 0.4 \
     -hadcorr 0.9999999 \
-    -geantnum 0
+    -geantnum $geantnum

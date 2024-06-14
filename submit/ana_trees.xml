@@ -11,7 +11,7 @@
         # put your script here, with filename as input file
         echo $filename
         echo "starting singularity"
-        singularity exec -e -B $SCRATCH -B /gpfs01 star_star.simg bash container_ana_trees.sh $filename;
+        singularity exec -e -B $SCRATCH -B /gpfs01 star_star.simg bash container_ana_trees.sh $filename $FILEBASENAME
         @ nFile++
         end
 
@@ -37,7 +37,7 @@
         <Package name="run12ana">
             <File>file:./star_star.simg</File>
             <File>file:./container_ana_trees.sh</File>
-            <File>file:./macros/</File>
+            <File>file:./macros/treeAna.cxx</File>
 	</Package>
 	</SandBox>
 

@@ -24,17 +24,13 @@ struct ResultStruct
                                                                  eventid(eventid) {}
 };
 
-int treeAna(TString inputFileName = "output/output_jets_MB.root")
+int treeAna(TString inputFileName = "output/output_jets_MB.root", TString outputFileName = "test")
 {
   Float_t jetRadius = 0.4;
   TH1::SetDefaultSumw2(true);
   float jetEtaCut = 1.0 - jetRadius;
-  float jetPtCut = 10;
-
-  // take basename of the input file, remove folder
-  TString outputName = inputFileName;
-  outputName.ReplaceAll(".root", "");
-  outputName += "_hists.root";
+  float jetPtCut = 0.001;
+  outputFileName += "hists.root";
 
   //! Set up events
   TFile *dataFile = new TFile(inputFileName);
@@ -65,7 +61,7 @@ int treeAna(TString inputFileName = "output/output_jets_MB.root")
   jetTree->SetBranchAddress("weight", &eventWeight);
   jetTree->SetBranchAddress("njets", &njets);
 
-  TFile *fout = new TFile(outputName, "RECREATE");
+  TFile *fout = new TFile(outputFileName, "RECREATE");
 
   TH1D *hJetPt = new TH1D("hJetPt", "", 80, 0, 80);
   TH1D *hJetPt_Fine = new TH1D("hJetPt_Fine", "", 800000, 0, 80);
@@ -96,7 +92,7 @@ int treeAna(TString inputFileName = "output/output_jets_MB.root")
 
       double pt = jet->Pt();
 
-      if (fabs(jet->Eta()) < jetEtaCut && pt > jetPtCut)
+      if (fabs(jet->Eta()) <= jetEtaCut && pt >= jetPtCut)
       {
         ResultStructs.push_back(ResultStruct(*jet, pt, eventid));
       }
@@ -119,7 +115,7 @@ int treeAna(TString inputFileName = "output/output_jets_MB.root")
   fout->Write();
 
   cout << " Wrote to" << endl
-       << outputName << endl;
+       << outputFileName << endl;
 
   return 0;
 }

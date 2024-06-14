@@ -1,6 +1,7 @@
 echo "cleaning that directory"
 rm *session.xml
-rm -r run12data.package
+rm -r *.package/
+
 rm *.zip
 rm schedTemplateExp.xml
 rm -r sched*.package
