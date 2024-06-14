@@ -13,7 +13,7 @@ make
 
 treeType=JetTree
 picoType=pico
-trigger=pp
+trigger=all
 
 if [[ $data_type = HT2 ]]; then
     trigger=ppHT

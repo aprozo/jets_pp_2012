@@ -1,10 +1,5 @@
-//! pp Run12 zg, rg analysis 
-//! Code to read in geant + pythia output trees and match them
-//! Raghav Kunnawalkam Elayavalli & Kolja Kauder
-//! contact - raghavke@wayne.edu
 //! HAS to be compiled,
-//! root -l macros/MatchGeantToPythia.cxx+
-
+//! root -l macros/PrepUnfolding.cxx+
 
 #include <TF1.h>
 #include <TH1.h>
@@ -14,7 +9,6 @@
 #include <TProfile.h>
 #include <TLine.h>
 
-#include <TROOT.h>
 #include <TLorentzVector.h>
 #include <TCanvas.h>
 #include <TStyle.h>
@@ -28,1565 +22,1540 @@
 #include <TRandom.h>
 #include <TSystem.h>
 
-#include <TStarJetVector.h>
-#include <TStarJetVectorJet.h>
+// #include "TStarJetVectorContainer.h"
+#include "TStarJetVector.h"
+#include "TStarJetVectorJet.h"
+
+// #include "TStarJetPicoUtils.h"
 
 #include <iostream>
-#include <fstream>
-#include <random>
 #include <vector>
 #include <string>
 #include <set>
 #include <cmath>
 #include <exception>
 
-#include "RooUnfoldResponse.h"
-#include "RooUnfoldBayes.h"
-#include "RooUnfoldSvd.h"
-#include "RooUnfoldTUnfold.h"
+// #include "RooUnfoldResponse.h"
+// #include "RooUnfoldBinByBin.h"
+// #include "RootUnfoldBayes.h"
+// #include "RootUnfoldSvd.h"
+// #include "RootUnfoldTUnfold.h"
 
-#include "Binning.h"
+// #include "Binning.h"
 
 using namespace std;
 
-//! Load helper macro
-#include "NewGeantWeightReject.hh"
-
-double fRand(double fMin, double fMax)
+class ResultStruct
 {
-    double f = (double)rand() / RAND_MAX;
-    return fMin + f * (fMax - fMin);
-}
-
-//! ----------------------------------------------------
-class RootResultStruct{
 public:
   TStarJetVectorJet orig;
-  double TwoSubJet_R0p1_Z;
-  double TwoSubJet_R0p1_Theta;
-  double TwoSubJet_R0p1_LeadpT;
-  double TwoSubJet_R0p1_SubLeadpT;	  
+  double pT;
+  vector<double> E;
+  vector<double> phi;
+  vector<double> eta;
+  vector<double> pt;
+  double weight;
+  ResultStruct(TStarJetVectorJet orig, double pT, vector<double> E, vector<double> pt, vector<double> phi, vector<double> eta, double weight) : orig(orig),
+                                                                                                                                                pT(pT),
+                                                                                                                                                kT(kT),
+                                                                                                                                                E(E),
+                                                                                                                                                pt(pt),
+                                                                                                                                                phi(phi),
+                                                                                                                                                eta(eta),
+                                                                                                                                                weight(weight){};
 
-  RootResultStruct ( TStarJetVectorJet orig,
-			     double TwoSubJet_R0p1_Z, double TwoSubJet_R0p1_Theta,
-			     double TwoSubJet_R0p1_LeadpT, double TwoSubJet_R0p1_SubLeadpT) :
-    orig(orig),
-    TwoSubJet_R0p1_Z(TwoSubJet_R0p1_Z),
-    TwoSubJet_R0p1_Theta(TwoSubJet_R0p1_Theta),
-    TwoSubJet_R0p1_LeadpT(TwoSubJet_R0p1_LeadpT),
-    TwoSubJet_R0p1_SubLeadpT(TwoSubJet_R0p1_SubLeadpT)
-  {};
-  
-  ClassDef(RootResultStruct,1)
-
+  ClassDef(ResultStruct, 1)
 };
 
-typedef pair<RootResultStruct,RootResultStruct> MatchedRootResultStruct;
+typedef pair<ResultStruct, ResultStruct> MatchedResultStruct;
 
-double findweight(double val = 10.0, TH1D *hpy8 = 0, TH1D *hhw7 = 0){
-  // cout<<"val = "<<val<<endl;
-  // hpy8->Print("base");
-  // hhw7->Print("base");
-  double val_r_py8 = hpy8->GetBinContent(hpy8->FindBin(val));
-  double val_r_hw7 = hhw7->GetBinContent(hhw7->FindBin(val));
-  return std::max(val_r_py8, val_r_hw7);
-}
+int SortedIntoSamples_RooUnfold(int RADIUS = 4)
+{
 
-double findweight_max(double val = 10.0, TH1D *hpy8 = 0, TH1D *hhw7 = 0){
-  double val_r_py8 = hpy8->GetBinContent(hpy8->FindBin(val));
-  if(val_r_py8 > 0 && val_r_py8 < 1)
-    val_r_py8 = 1./val_r_py8;
-  double val_r_hw7 = hhw7->GetBinContent(hhw7->FindBin(val));
-  if(val_r_hw7 > 0 && val_r_hw7 < 1)
-    val_r_hw7 = 1./val_r_hw7;
-  return std::max(val_r_py8, val_r_hw7);
-}
-
-double findweight_avg(double val = 10.0, TH1D *hpy8 = 0, TH1D *hhw7 = 0){
-  double val_r_py8 = hpy8->GetBinContent(hpy8->FindBin(val));
-  if(val_r_py8 > 0 && val_r_py8 < 1)
-    val_r_py8 = 1./val_r_py8;
-  double val_r_hw7 = hhw7->GetBinContent(hhw7->FindBin(val));
-  if(val_r_hw7 > 0 && val_r_hw7 < 1)
-    val_r_hw7 = 1./val_r_hw7;
-  return (val_r_py8+val_r_hw7)/2;
-}
-
-double findweight_v2(double val = 10.0, TH1D *hweight = 0){
-  return hweight->GetBinContent(hweight->FindBin(val));
-}
-
-int MatchGeantToPythia (int RADIUS = 4,
-			int mode = 0
-			) {
   gStyle->SetOptStat(0);
   gStyle->SetTitleX(0.1f);
   gStyle->SetTitleW(0.8f);
-  gStyle->SetTitleBorderSize(0);	
+  gStyle->SetTitleBorderSize(0);
   gStyle->SetHistLineWidth(2);
-  TLegend* leg = 0;
-  
-  bool PrepClosure=true;
+
+  TLegend *leg = 0;
+
+  float RCut = (float)RADIUS / 10;
+
+  srand(time(0));
+  int MCRandom = 0;
+  double RandomA = 0;
+  double RandomB = 0;
+
+  // alternative sorting method, gaussian distribution.
+  // std::random_device rd;
+  // std::mt19937 gen(rd());
+
+  //! For pp Data
+  TString PpLevelFile = "/gpfs01/star/pwg/robotmon/ppRun12_analysis_code/out/Geant_R04_new.root";
+  TString McLevelFile = "/gpfs01/star/pwg/robotmon/ppRun12_analysis_code/out/Pythia_R04_new.root";
+
+  float EtaCut = 1.0 - RCut;
+
   bool addpTCut = true;
 
-  TRandom rand;
+  // Output
+  // ------
+  TString OutFileName = "/gpfs01/star/pwg/prozorov/jets_pp_2012/SortedSample_R04_matching_new.root";
 
-  TString PpLevelFile;
-  if(mode == 0)
-    PpLevelFile = Form("Results/Geant_Run12_NoEff_NoBg_JP2_TSJ_wchpionMassSet_R0%d_Cleanpp12Pico_hadded_v2.root", RADIUS);
-  else if(mode == 1)
-    PpLevelFile = Form("Results/Geant_Run12_MIP_NoEff_NoBg_JP2_TSJ_wchpionMassSet_R0%d_Cleanpp12Pico_hadded_v2.root", RADIUS);
-  else if(mode == 2)
-    PpLevelFile = Form("Results/Geant_Run12_HC0p5_NoEff_NoBg_JP2_TSJ_wchpionMassSet_R0%d_Cleanpp12Pico_hadded_v2.root", RADIUS);
-  else if(mode == 3)
-    PpLevelFile = Form("Results/Geant_Run12_TowScaleUncer1_NoEff_NoBg_JP2_TSJ_wchpionMassSet_R0%d_Cleanpp12Pico_hadded_v2.root", RADIUS);
-  else if(mode == 4)
-    PpLevelFile = Form("Results/Geant_Run12_TrackEff0p96_NoEff_NoBg_JP2_TSJ_wchpionMassSet_R0%d_Cleanpp12Pico_hadded_v2.root", RADIUS);
-    
+  //! Set up Geant Chain
+  TFile *Ppf = new TFile(PpLevelFile);
+  TTree *PpChain = (TTree *)Ppf->Get("ResultTree");
+  PpChain->BuildIndex("runid", "eventid");
+  cout << "size is" << PpChain->GetEntries() << endl;
 
-  TString McLevelFile = Form("Results/Pythia6_Run12_TSJ_wparticleMassSet_R0%d_Cleanpp12Pico_hadded.root", RADIUS);
-
-  
-  TFile * fin = TFile::Open(Form("Results/PY6_pTZgRgZsjThetasj_shapeDiff_PY8HW7_R0%d.root", RADIUS));
-  TH1D * hJetpT_PY6_Ratio_PY8 = (TH1D*)fin->Get("hJetpT_PY6_Ratio_PY8");
-  TH1D * hJetpT_PY6_Ratio_HW7 = (TH1D*)fin->Get("hJetpT_PY6_Ratio_HW7");
-  TH1D * hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[npubptbins];
-  TH1D * hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[npubptbins];
-  TH1D * hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[npubptbins];
-  TH1D * hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[npubptbins];
-
-  for(int ip = 0; ip < npubptbins; ++ip){
-    hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[ip] = (TH1D*)fin->Get(Form("hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8_ptbin%d", ip));
-    hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[ip] = (TH1D*)fin->Get(Form("hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8_ptbin%d", ip));
-    hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[ip] = (TH1D*)fin->Get(Form("hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7_ptbin%d", ip));
-    hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[ip] = (TH1D*)fin->Get(Form("hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7_ptbin%d", ip));
-  }
-
-  float MinJetPt = 5.0;
-  bool UseMiss=true;
-  bool UseFakes=true;
-
-  bool RejectHiweights= true;
-  
-  float RCut = (float)RADIUS/10;
-  
-  float EtaCut = 1.0-RCut;
-
-  //! Output
-  TString OutFileName = "Results/";
-  if(mode == 0){
-    OutFileName = Form("Results/GeantToPythia_Match_ppRun12_200GeV_NoEff_NoBg_R0%d_v2.root", RADIUS);
-  } else if (mode == 1)
-    OutFileName = Form("Results/GeantToPythia_Match_ppRun12_200GeV_MIP_NoEff_NoBg_R0%d_v2.root", RADIUS);
-  else if (mode == 2)
-    OutFileName = Form("Results/GeantToPythia_Match_ppRun12_200GeV_HC0p5_NoEff_NoBg_R0%d_v2.root", RADIUS);
-  else if (mode == 3)
-    OutFileName = Form("Results/GeantToPythia_Match_ppRun12_200GeV_TowScaleUncer1_NoEff_NoBg_R0%d_v2.root", RADIUS);
-  else if (mode == 4)
-    OutFileName = Form("Results/GeantToPythia_Match_ppRun12_200GeV_TrackEff0p96_NoEff_NoBg_R0%d_v2.root", RADIUS);
-  
-
-  TFile* Mcf = new TFile( McLevelFile );
-  TTree* McChain = (TTree*) Mcf->Get("ResultTree");
-  McChain->BuildIndex("runid","eventid");
-
-  TClonesArray* McJets = new TClonesArray("TStarJetVectorJet");
-  McChain->GetBranch("Jets")->SetAutoDelete(kFALSE);
-  McChain->SetBranchAddress("Jets", &McJets);
-
-  
-  int mceventid;
-  int mcrunid;
-  double mcweight;     
-  McChain->SetBranchAddress("eventid", &mceventid);
-  McChain->SetBranchAddress("runid", &mcrunid);
-  McChain->SetBranchAddress("weight",&mcweight );
-
-  int mcnjets=0;
-  McChain->SetBranchAddress("njets", &mcnjets );
-
-  double mcTwoSubJet_R0p1_Z[1000];
-  McChain->SetBranchAddress("TwoSubJet_R0p1_Z", mcTwoSubJet_R0p1_Z );
-
-  double mcTwoSubJet_R0p1_Theta[1000];
-  McChain->SetBranchAddress("TwoSubJet_R0p1_Theta", mcTwoSubJet_R0p1_Theta );
-
-  double mcTwoSubJet_R0p1_LeadpT[1000];
-  McChain->SetBranchAddress("TwoSubJet_R0p1_LeadpT", mcTwoSubJet_R0p1_LeadpT );
-
-  double mcTwoSubJet_R0p1_SubLeadpT[1000];
-  McChain->SetBranchAddress("TwoSubJet_R0p1_SubLeadpT", mcTwoSubJet_R0p1_SubLeadpT );
-  
-  TFile* Ppf = new TFile( PpLevelFile );
-  TTree* PpChain = (TTree*) Ppf->Get("ResultTree");
-  PpChain->BuildIndex("runid","eventid");
-
-  TClonesArray* PpJets = new TClonesArray("TStarJetVectorJet");
+  TClonesArray *PpJets = new TClonesArray("TStarJetVectorJet");
   PpChain->GetBranch("Jets")->SetAutoDelete(kFALSE);
   PpChain->SetBranchAddress("Jets", &PpJets);
+  cout << "size is 2" << PpChain->GetEntries() << endl;
 
+  vector<double> *pT = new vector<double>;
+  vector<double> *E = new vector<double>;
+  vector<vector<double>> *ppE_Vec = new vector<vector<double>>;
+  vector<vector<double>> *pppt_Vec = new vector<vector<double>>;
+  vector<vector<double>> *ppphi_Vec = new vector<vector<double>>;
+  vector<vector<double>> *ppeta_Vec = new vector<vector<double>>;
+
+  PpChain->SetBranchAddress("pT", &pT);
+  PpChain->SetBranchAddress("ConstE", &ppE_Vec);
+  PpChain->SetBranchAddress("Constphi", &ppphi_Vec);
+  PpChain->SetBranchAddress("Constpt", &pppt_Vec);
+  PpChain->SetBranchAddress("Consteta", &ppeta_Vec);
+
+  int MatchNumber = 0;
+  int FakeNumber = 0;
+  int MissNumber = 0;
+  int MissEventNumber = 0;
+  int MatchedGeantEventNumber = 0;
+  int TotalGeantEventNumber = 0;
+  int FakeEventNumber = 0;
 
   int ppeventid;
   int pprunid;
-  double ppweight;     
+  double ppweight;
+  int ppnjets = 0;
   PpChain->SetBranchAddress("eventid", &ppeventid);
   PpChain->SetBranchAddress("runid", &pprunid);
-  PpChain->SetBranchAddress("weight",&ppweight );
+  PpChain->SetBranchAddress("weight", &ppweight);
+  PpChain->SetBranchAddress("njets", &ppnjets);
 
-  int ppnjets=0;
-  PpChain->SetBranchAddress("njets", &ppnjets );
+  //! Set up Pythia Chain
+  TFile *Mcf = new TFile(McLevelFile);
+  TTree *McChain = (TTree *)Mcf->Get("ResultTree");
+  McChain->BuildIndex("runid", "eventid");
+  cout << "size is" << McChain->GetEntries() << endl;
 
-  double ppTwoSubJet_R0p1_Z[1000];
-  PpChain->SetBranchAddress("TwoSubJet_R0p1_Z", ppTwoSubJet_R0p1_Z );
+  TClonesArray *McJets = new TClonesArray("TStarJetVectorJet");
+  McChain->GetBranch("Jets")->SetAutoDelete(kFALSE);
+  McChain->SetBranchAddress("Jets", &McJets);
 
-  double ppTwoSubJet_R0p1_Theta[1000];
-  PpChain->SetBranchAddress("TwoSubJet_R0p1_Theta", ppTwoSubJet_R0p1_Theta );
+  vector<double> *mcpT = new vector<double>;
+  vector<double> *mcE = new vector<double>;
 
-  double ppTwoSubJet_R0p1_LeadpT[1000];
-  PpChain->SetBranchAddress("TwoSubJet_R0p1_LeadpT", ppTwoSubJet_R0p1_LeadpT );
+  vector<vector<double>> *mcE_Vec = new vector<vector<double>>;
+  vector<vector<double>> *mcpt_Vec = new vector<vector<double>>;
+  vector<vector<double>> *mcphi_Vec = new vector<vector<double>>;
+  vector<vector<double>> *mceta_Vec = new vector<vector<double>>;
 
-  double ppTwoSubJet_R0p1_SubLeadpT[1000];
-  PpChain->SetBranchAddress("TwoSubJet_R0p1_SubLeadpT", ppTwoSubJet_R0p1_SubLeadpT );
+  McChain->SetBranchAddress("pT", &mcpT);
 
-  
-  //! Output and histograms
-  TFile* fout = new TFile( OutFileName, "RECREATE");
-  
+  McChain->SetBranchAddress("E", &mcE);
+
+  McChain->SetBranchAddress("ConstE", &mcE_Vec);
+  McChain->SetBranchAddress("Constphi", &mcphi_Vec);
+
+  McChain->SetBranchAddress("Constpt", &mcpt_Vec);
+  McChain->SetBranchAddress("Consteta", &mceta_Vec);
+
+  int mceventid;
+  int mcrunid;
+  double mcweight;
+  int mcnjets = 0;
+  double mctotalpT;
+  McChain->SetBranchAddress("totalpT", &mctotalpT);
+  McChain->SetBranchAddress("eventid", &mceventid);
+  McChain->SetBranchAddress("runid", &mcrunid);
+  McChain->SetBranchAddress("weight", &mcweight);
+  McChain->SetBranchAddress("njets", &mcnjets);
+
+  // new from Isaac
+  const int NUMBEROFPT = 13;
+  // const char *PTBINS[NUMBEROFPT]={"2_3","3_4","4_5","5_7","7_9","9_11","11_15","15_20","20_25","25_35","35_-1"};
+  const static float XSEC[NUMBEROFPT] = {0.00230158, 0.000342755, 0.0000457002, 9.0012, .00000972535, 1.46253, 0.000000469889, 0.354566, 0.0000000269202, 0.00000000143453, 0.151622, 0.0249062, 0.00584527};
+  const static float NUMBEROFEVENT[NUMBEROFPT] = {3000000, 3000000, 3000000, 3000000, 2000000, 3000000, 2000000, 3000000, 1000000, 1000000, 3000000, 3000000, 3000000};
+  const static float MAXPT[NUMBEROFPT] = {30, 40, 50, 6, 70, 8, 90, 10, 110, 2000, 14, 18, 22};
+  const static vector<string> vptbins = {"1115_", "1520_", "2025_", "23_", "2535_", "34_", "3545_", "45_", "4555_", "55999_", "57_", "79_", "911_"};
+  // Define Bounds on Delta R
+
+  // R=0.4 bins
+
+  // int nBins=12;
+  // double bounds[13] = {exp(-3.7),exp(-3),exp(-2.5),exp(-2.2),exp(-2),exp(-1.8),exp(-1.6),exp(-1.4),exp(-1.2),exp(-1),exp(-0.8),exp(-0.6),exp(-0.2)}; //cool NEW non-log bounds that I can turn into them
+  // int nBinsPtWeight=12;
+  // double boundsPtWeight[13] = {20*exp(-3.7),20*exp(-3),20*exp(-2.5),20*exp(-2.2),20*exp(-2),20*exp(-1.8),20*exp(-1.6),20*exp(-1.4),20*exp(-1.2),20*exp(-1),20*exp(-0.8),20*exp(-0.6),20*exp(-0.2)};
+
+  // Set Minimum Constituent pT
+  double ConMinPt = 0.2;
+
+  // Define Bounds on Jet pT
+  // Truth and Measured Jet Bounds are the same for now
+
+  int MeasJetBins = 10;
+  double MeasJetBounds[11] = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60};
+
+  int TruthJetBins = 10;
+  double TruthJetBounds[11] = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60};
+
+  // Output and histograms
+  TFile *fout = new TFile(OutFileName, "RECREATE");
   TH1::SetDefaultSumw2(true);
-  TH2::SetDefaultSumw2(true);
-  
-  //! Declare histograms for spectra
-  TH1D * hRecoJetPt_QA = new TH1D("hRecoJetPt_QA","", 120, 0, 60);
-  TH1D * hGenJetPt_QA = new TH1D("hGenJetPt_QA","", 120, 0, 60);  
-  TH1D * hRecoJetPt = new TH1D("hRecoJetPt","", npubptbins, pubptbins);
-  TH1D * hGenJetPt = new TH1D("hGenJetPt","", npubptbins, pubptbins);
-  TH1D * hGenJetPt_v2 = new TH1D("hGenJetPt_v2","", npubptbins, pubptbins);
-  TH1D * hGenMatchedJetPt = new TH1D("hGenMatchedJetPt","", npubptbins, pubptbins);
-  TH1D * hGenUnMatchedJetPt = new TH1D("hGenUnMatchedJetPt","", npubptbins, pubptbins);
-  TH1D * hRecoMatchedJetPt = new TH1D("hRecoMatchedJetPt","", npubptbins, pubptbins);
-  TH1D * hGenMissJetPt = new TH1D("hGenMissJetPt","", npubptbins, pubptbins);
-  TH1D * hRecoFakeJetPt = new TH1D("hRecoFakeJetPt","", npubptbins, pubptbins);
 
-  TH1D * hJetFindingEfficiency = new TH1D("hJetFindingEfficiency", "", npubptbins, pubptbins);
-  TH1D * hJetFakeRate = new TH1D("hJetFakeRate", "", npubptbins, pubptbins);
-  
-  TH1D * hRecoJetEta = new TH1D("hRecoJetEta","", 50, -1, 1);
-  TH1D * hGenJetEta = new TH1D("hGenJetEta","", 50, -1, 1);
-  TH1D * hRecoJetPhi = new TH1D("hRecoJetPhi","", 50, -3.15, 3.15);
-  TH1D * hGenJetPhi = new TH1D("hGenJetPhi","", 50, -3.15, 3.15);
-  TH2D * hMatrixJetPt = new TH2D("hMatrixJetPt","", npubptbins, pubptbins, npubptbins, pubptbins);
+  // TH2D* CheckWeight15to20 = new TH2D("GeantPt","",nBins,bounds
 
-  //! histograms for JES/JER, zg, rg, M
-  TH1D * hJER[npubptbins];  
-  TH1D * hJER_v2[npubptbins];  
-  TH1D * hJER_TwoSubJet_R0p1_Z[npubptbins];  
-  TH1D * hJER_TwoSubJet_R0p1_Theta[npubptbins];  
-  TH1D * hJER_v2_TwoSubJet_R0p1_Z[npubptbins];  
-  TH1D * hJER_v2_TwoSubJet_R0p1_Theta[npubptbins];  
+  TH1D *DoubleMatchedResolution = new TH1D("DoubleMatchedResolution", "", 20, 0, 2);
+  TH1D *SingleMatchedResolution = new TH1D("SingleMatchedResolution", "", 20, 0, 2);
 
-  TH1D * hGen_TwoSubJet_R0p1_Z[npubptbins];
-  TH1D * hGen_TwoSubJet_R0p1_Theta[npubptbins];
-  TH1D * hGen_TwoSubJet_R0p1_LeadpT[npubptbins];
-  TH1D * hGen_TwoSubJet_R0p1_SubLeadpT[npubptbins];
-  // TH1D * hGen_chFraction[npubptbins];  
-  TH1D * hReco_TwoSubJet_R0p1_Z[npubptbins];
-  TH1D * hReco_TwoSubJet_R0p1_Theta[npubptbins];
-  TH1D * hReco_TwoSubJet_R0p1_LeadpT[npubptbins];
-  TH1D * hReco_TwoSubJet_R0p1_SubLeadpT[npubptbins];
-  // TH1D * hReco_chFraction[npubptbins];
-  
-  TH2D * hPtResponse = new TH2D("hPtResponse", "2D pT response matrix", nPtBinsMeas, ptminMeas, ptmaxMeas, nPtBinsTrue, ptminTrue, ptmaxTrue);
-  TH2D * hPtResponse_transpose = new TH2D("hPtResponse_transpose", "2D pT response matrix", nPtBinsTrue, ptminTrue, ptmaxTrue, nPtBinsMeas, ptminMeas, ptmaxMeas);
-  TH2D * hTwoSubJet_R0p1_ZResponse[npubptbins];
-  TH2D * hTwoSubJet_R0p1_ThetaResponse[npubptbins];
-  TH2D * hTwoSubJet_R0p1_LeadpTResponse[npubptbins];
-  TH2D * hTwoSubJet_R0p1_SubLeadpTResponse[npubptbins];
-  
-  TH1D * hRecopTGroombypTDet[npubptbins];
-  TH1D * hGenpTGroombypTDet[npubptbins];
-  
-  for(int i = 0; i<npubptbins; ++i){
+  TH1D *MissRate_EventNum = new TH1D("MissRate_EventNum", "", 7500, 0, 7500000);
+  TH1D *TotalRate_True_EventNum = new TH1D("TotalRate_True_EventNum", "", 7500, 0, 7500000);
 
-    hTwoSubJet_R0p1_ZResponse[i] = new TH2D(Form("hTwoSubJet_R0p1_ZResponse_ptbin%d", i), Form("TwoSubJet_R0p1_Z response ptbin %d", i), nZgBinsTrue, zgminTrue, zgmaxTrue, nZgBinsTrue, zgminTrue, zgmaxTrue);
-    hTwoSubJet_R0p1_ThetaResponse[i] = new TH2D(Form("hTwoSubJet_R0p1_ThetaResponse_ptbin%d", i), Form("TwoSubJet_R0p1_Theta response ptbin %d", i), nRgBinsTrue, rgminTrue, rgmaxTrue, nRgBinsTrue, rgminTrue, rgmaxTrue);
-    hTwoSubJet_R0p1_LeadpTResponse[i] = new TH2D(Form("hTwoSubJet_R0p1_LeadpTResponse_ptbin%d", i), Form("TwoSubJet_R0p1_LeadpT response ptbin %d", i), 60, 0, 60, 60, 0, 60);
-    hTwoSubJet_R0p1_SubLeadpTResponse[i] = new TH2D(Form("hTwoSubJet_R0p1_SubLeadpTResponse_ptbin%d", i), Form("TwoSubJet_R0p1_SubLeadpT response ptbin %d", i), 60, 0, 60, 60, 0, 60);
-    
-    hRecopTGroombypTDet[i]= new TH1D(Form("hRecopTGroombypTDet_ptbin%d", i), "", 100, 0, 1);
-    hGenpTGroombypTDet[i]= new TH1D(Form("hGenpTGroombypTDet_ptbin%d", i), "", 100, 0, 1);
-      
-    hJER[i] = new TH1D(Form("hJER_ptbin_%d", i), "", 50, 0, 2);
-    hJER_v2[i] = new TH1D(Form("hJER_v2_ptbin_%d", i), "", 50, 0, 2);
-    hJER_TwoSubJet_R0p1_Z[i] = new TH1D(Form("hJER_TwoSubJet_R0p1_Z_ptbin_%d", i), "", 50, 0, 2);
-    hJER_TwoSubJet_R0p1_Theta[i] = new TH1D(Form("hJER_TwoSubJet_R0p1_Theta_ptbin_%d", i), "", 50, 0, 2);
-    hJER_v2_TwoSubJet_R0p1_Z[i] = new TH1D(Form("hJER_v2_TwoSubJet_R0p1_Z_ptbin_%d", i), "", 50, 0, 2);
-    hJER_v2_TwoSubJet_R0p1_Theta[i] = new TH1D(Form("hJER_v2_TwoSubJet_R0p1_Theta_ptbin_%d", i), "", 50, 0, 2);
-    
-    hGen_TwoSubJet_R0p1_Z[i] = new TH1D(Form("hGen_TwoSubJet_R0p1_Z_ptbin_%d", i), "", nZgBinsTrue, zgminTrue, zgmaxTrue);
-    hGen_TwoSubJet_R0p1_Theta[i] = new TH1D(Form("hGen_TwoSubJet_R0p1_Theta_ptbin_%d", i), "", nRgBinsTrue, rgminTrue, rgmaxTrue);
-    hGen_TwoSubJet_R0p1_LeadpT[i] = new TH1D(Form("hGen_TwoSubJet_R0p1_LeadpT_ptbin_%d", i), "", 60, 0, 60);
-    hGen_TwoSubJet_R0p1_SubLeadpT[i] = new TH1D(Form("hGen_TwoSubJet_R0p1_SubLeadpT_ptbin_%d", i), "", 60, 0, 60);
-    // hGen_chFraction[i] = new TH1D(Form("hGen_chFraction_ptbin_%d", i), "", 50, 0.0, 1);    
-    hReco_TwoSubJet_R0p1_Z[i] = new TH1D(Form("hReco_TwoSubJet_R0p1_Z_ptbin_%d", i), "", nZgBinsTrue, zgminTrue, zgmaxTrue);
-    hReco_TwoSubJet_R0p1_Theta[i] = new TH1D(Form("hReco_TwoSubJet_R0p1_Theta_ptbin_%d", i), "", nRgBinsTrue, rgminTrue, rgmaxTrue);
-    hReco_TwoSubJet_R0p1_LeadpT[i] = new TH1D(Form("hReco_TwoSubJet_R0p1_LeadpT_ptbin_%d", i), "", 60, 0, 60);
-    hReco_TwoSubJet_R0p1_SubLeadpT[i] = new TH1D(Form("hReco_TwoSubJet_R0p1_SubLeadpT_ptbin_%d", i), "", 60, 0, 60);
-    // hReco_chFraction[i] = new TH1D(Form("hReco_chFraction_ptbin_%d", i), "", 50, 0.0, 1);    
+  TH1D *FakeRate_EventNum = new TH1D("FakeRate_EventNum", "", 7500, 0, 7500000);
+  TH1D *TotalRate_Meas_EventNum = new TH1D("TotalRate_Meas_EventNum", "", 7500, 0, 7500000);
 
+  TH1D *JetPt_True = new TH1D("JetPt_True", "", MeasJetBins, MeasJetBounds);
+  TH1D *JetPt_Meas = new TH1D("JetPt_Meas", "", MeasJetBins, MeasJetBounds);
+  TH1D *JetPt_TriggerMissed = new TH1D("JetPt_TriggerMissed", "", MeasJetBins, MeasJetBounds);
+  TH1D *JetPt_JetMissed = new TH1D("JetPt_JetMissed", "", MeasJetBins, MeasJetBounds);
+  TH1D *JetPt_Fake_Event = new TH1D("JetPt_Fake_Event", "", MeasJetBins, MeasJetBounds);
+  TH1D *JetPt_Fake_Jet = new TH1D("JetPt_Fake_Jet", "", MeasJetBins, MeasJetBounds);
+  TH2D *JetEtaPhi_True = new TH2D("JetEtaPhi_True", "", 100, -1, 1, 100, 0, 6.3);
+  TH2D *JetEtaPhi_Meas = new TH2D("JetEtaPhi_Meas", "", 100, -1, 1, 100, 0, 6.3);
+  TH2D *JetEtaPhi_TriggerMissed = new TH2D("JetEtaPhi_TriggerMissed", "", 100, -1, 1, 100, 0, 6.3);
+  TH2D *JetEtaPhi_JetMissed = new TH2D("JetEtaPhi_JetMissed", "", 100, -1, 1, 100, 0, 6.3);
+  TH2D *JetEtaPhi_Fake_Event = new TH2D("JetEtaPhi_Fake_Event", "", 100, -1, 1, 100, 0, 6.3);
+  TH2D *JetEtaPhi_Fake_Jet = new TH2D("JetEtaPhi_Fake_Jet", "", 100, -1, 1, 100, 0, 6.3);
+
+  TH2D *JetPt_Match = new TH2D("JetPt_Match", "", MeasJetBins, MeasJetBounds, MeasJetBins, MeasJetBounds);
+
+  int constituentbins = 11;
+  double constituentbounds[12] = {-0.5, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5};
+  TH2D *NConstituentsmc = new TH2D("NConstituentsmc", "", MeasJetBins, MeasJetBounds, constituentbins, constituentbounds);
+  TH2D *NConstituentspp = new TH2D("NConstituentspp", "", MeasJetBins, MeasJetBounds, constituentbins, constituentbounds);
+
+  TH2D *NMatched = new TH2D("NMatched", "", MeasJetBins, MeasJetBounds, constituentbins, constituentbounds);
+  TH2D *NMissed = new TH2D("NMissed", "", MeasJetBins, MeasJetBounds, constituentbins, constituentbounds);
+  TH2D *NFake = new TH2D("NFake", "", MeasJetBins, MeasJetBounds, constituentbins, constituentbounds);
+
+  TH2D *ConstituentpTmc = new TH2D("ConstituentpTmc", "", 11, 5, 60, 100, 0, 30);
+  TH2D *ConstituentpTpp = new TH2D("ConstituentpTpp", "", 11, 5, 60, 100, 0, 30);
+
+  int neutralenergybins = 13;
+  double neutralenergybounds[14] = {-0.5, -0.1, -0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.05};
+  TH2D *NeutralEnergyFractionmc = new TH2D("NeutralEnergyFractionmc", "", MeasJetBins, MeasJetBounds, neutralenergybins, neutralenergybounds);
+  TH2D *NeutralEnergyFractionpp = new TH2D("NeutralEnergyFractionpp", "", MeasJetBins, MeasJetBounds, neutralenergybins, neutralenergybounds);
+
+  TH1D *ChargeSampleCounts = new TH1D("ChargeSampleCounts", "", 2, 1, 3);
+
+  TH1D *MatchDistance = new TH1D("MatchDistance", "", 100, 0, 0.1);
+  TH2D *Match_DeltaR = new TH2D("Match_DeltaRDifference", "", 100, 0, 0.1, 100, 0, 0.1);
+  TH2D *ChargeMismatch = new TH2D("ChargeMismatch", "", 50, 0, 0.8, 50, 0, 0.8);
+  TH2D *Match_DeltaDeltaR_ChargeMismatch = new TH2D("Match_DeltaRDeltaRDifference_ChargeMismatch", "", 200, 0, 0.8, 200, -0.4, 0.4);
+  TH2D *Match_DeltaDeltaR = new TH2D("Match_DeltaRDeltaRDifference", "", 1000, 0, 0.8, 1000, -0.2, 0.2);
+  TH2D *Match_DeltaDeltaR_LikeCharge = new TH2D("Match_DeltaRDeltaRDifference_LikeCharge", "", 1000, 0, 0.8, 1000, -0.2, 0.2);
+  TH2D *Match_DeltaDeltaR_OppCharge = new TH2D("Match_DeltaRDeltaRDifference_OppCharge", "", 1000, 0, 0.8, 1000, -0.2, 0.2);
+  TH2D *Match_DeltaPhi = new TH2D("Match_DeltaPhiDifference", "", 500, 0, 2 * 3.14, 500, 0, 2 * 3.14);
+  TH2D *Match_DeltaEta = new TH2D("Match_DeltaEtaDifference", "", 500, -1, 1, 500, -1, 1);
+
+  // SetUp Output Trees
+
+  TTree *MatchTree = new TTree("MatchTree", "Correlations with weights and sample assignment");
+
+  double EventWeightmc;
+  double JetPtmc;
+  double DeltaRmc;
+  double EventWeightpp;
+  double JetPtpp;
+  double DeltaRpp;
+  // Charge Sample 1 = like, 2 = unlike
+  int ChargeSampleMatch;
+  int SampleMatch;
+
+  MatchTree->Branch("EventWeightmc", &EventWeightmc);
+  MatchTree->Branch("JetPtmc", &JetPtmc);
+  MatchTree->Branch("DeltaRmc", &DeltaRmc);
+
+  MatchTree->Branch("JetPtpp", &JetPtpp);
+  MatchTree->Branch("DeltaRpp", &DeltaRpp);
+
+  MatchTree->Branch("SampleMatch", &SampleMatch);
+  MatchTree->Branch("ChargeSampleMatch", &ChargeSampleMatch);
+
+  TTree *FakeTree = new TTree("FakeTree", "Correlations with weights and sample assignment");
+
+  double EventWeightFake;
+
+  double JetPtFake;
+  double DeltaRFake;
+  int ChargeSampleFake;
+  int SampleFake;
+  int TriggerFake;
+
+  FakeTree->Branch("EventWeightFake", &EventWeightFake);
+  FakeTree->Branch("JetPtFake", &JetPtFake);
+  FakeTree->Branch("DeltaRFake", &DeltaRFake);
+
+  FakeTree->Branch("ChargeSampleFake", &ChargeSampleFake);
+  FakeTree->Branch("SampleFake", &SampleFake);
+  FakeTree->Branch("TriggerFake", &TriggerFake);
+
+  TTree *MissTree = new TTree("MissTree", "Correlations with weights and sample assignment");
+
+  double EventWeightMiss;
+  double JetPtMiss;
+  double DeltaRMiss;
+  int SampleMiss;
+  int ChargeSampleMiss;
+  int TriggerMissed;
+
+  MissTree->Branch("EventWeightMiss", &EventWeightMiss);
+
+  MissTree->Branch("JetPtMiss", &JetPtMiss);
+  MissTree->Branch("DeltaRMiss", &DeltaRMiss);
+
+  MissTree->Branch("SampleMiss", &SampleMiss);
+  MissTree->Branch("ChargeSampleMiss", &ChargeSampleMiss);
+  MissTree->Branch("TriggerMissed", &TriggerMissed);
+
+  // checks on EEC Resolution
+
+  int ResolutionBins = 10;
+  double ResolutionBounds[11];
+
+  for (int k = 0; k < ResolutionBins + 1; ++k)
+  {
+
+    ResolutionBounds[k] = k * 0.5 / ((double)ResolutionBins);
   }
-  
 
-  //! 2D unfolding:
-  TH2D* hTrue= new TH2D ("hTrue", "Truth", nPtBinsTrue, ptminTrue, ptmaxTrue, nZgBinsTrue, zgminTrue, zgmaxTrue);
-  TH2D* hMeas= new TH2D ("hMeas", "Measured", nPtBinsMeas, ptminMeas, ptmaxMeas, nZgBinsMeas, zgminMeas, zgmaxMeas);
-  TH2D* hTrue_rg= new TH2D ("hTrue_rg", "Truth_rg", nPtBinsTrue, ptminTrue, ptmaxTrue, nRgBinsTrue, rgminTrue, rgmaxTrue);
-  TH2D* hMeas_rg= new TH2D ("hMeas_rg", "Measured_rg", nPtBinsMeas, ptminMeas, ptmaxMeas, nRgBinsMeas, rgminMeas, rgmaxMeas);
-
-  TH1D * hTrue_zg_1Dtest = new TH1D("hTrue_zg_1Dtest", "", nZgBinsTrue, zgminTrue, zgmaxTrue);
-  TH1D * hTrue_rg_1Dtest = new TH1D("hTrue_rg_1Dtest", "", nRgBinsTrue, rgminTrue, rgmaxTrue);
-  TH1D * hMeas_zg_1Dtest = new TH1D("hMeas_zg_1Dtest", "", nZgBinsMeas, zgminMeas, zgmaxMeas);
-  TH1D * hMeas_rg_1Dtest = new TH1D("hMeas_rg_1Dtest", "", nRgBinsMeas, rgminMeas, rgmaxMeas);
-
-  
-  RooUnfoldResponse IncPtResponse (nPtBinsMeas, ptminMeas, ptmaxMeas, nPtBinsTrue, ptminTrue, ptmaxTrue);
-  
-  RooUnfoldResponse IncPtResponse_MCClosure (nPtBinsMeas, ptminMeas, ptmaxMeas, nPtBinsTrue, ptminTrue, ptmaxTrue);
-
-  RooUnfoldResponse IncPtTwoSubJet_R0p1_ZResponse2D;
-  IncPtTwoSubJet_R0p1_ZResponse2D.Setup (hMeas, hTrue );
-  RooUnfoldResponse IncPtTwoSubJet_R0p1_ThetaResponse2D;
-  IncPtTwoSubJet_R0p1_ThetaResponse2D.Setup (hMeas_rg, hTrue_rg );
-  
-  RooUnfoldResponse IncPtTwoSubJet_R0p1_ZResponse2D_MCClosure;
-  IncPtTwoSubJet_R0p1_ZResponse2D_MCClosure.Setup (hMeas, hTrue);
-  RooUnfoldResponse IncPtTwoSubJet_R0p1_ThetaResponse2D_MCClosure;
-  IncPtTwoSubJet_R0p1_ThetaResponse2D_MCClosure.Setup (hMeas_rg, hTrue_rg);
-  
-  //! Various responses with truth shapes reweighted to represent a different prior
-  RooUnfoldResponse IncBentPtResponse    ( nPtBinsMeas, ptminMeas, ptmaxMeas, nPtBinsTrue, ptminTrue, ptmaxTrue );
-  RooUnfoldResponse IncPriorBentPtResponse( nPtBinsMeas, ptminMeas, ptmaxMeas, nPtBinsTrue, ptminTrue, ptmaxTrue );
-  
-
-  //! twosubjet bent stuff
-  RooUnfoldResponse IncBentPtTwoSubJet_R0p1_ZResponse2D;
-  IncBentPtTwoSubJet_R0p1_ZResponse2D.Setup (hMeas, hTrue);
-  RooUnfoldResponse IncPtBentTwoSubJet_R0p1_ZResponse2D;
-  IncPtBentTwoSubJet_R0p1_ZResponse2D.Setup (hMeas, hTrue);  
-  RooUnfoldResponse IncBentPtBentTwoSubJet_R0p1_ZResponse2D;
-  IncBentPtBentTwoSubJet_R0p1_ZResponse2D.Setup (hMeas, hTrue);
-
-  RooUnfoldResponse IncBentPtTwoSubJet_R0p1_ThetaResponse2D;
-  IncBentPtTwoSubJet_R0p1_ThetaResponse2D.Setup (hMeas_rg, hTrue_rg );
-  RooUnfoldResponse IncPtBentTwoSubJet_R0p1_ThetaResponse2D;
-  IncPtBentTwoSubJet_R0p1_ThetaResponse2D.Setup (hMeas_rg, hTrue_rg );  
-  RooUnfoldResponse IncBentPtBentTwoSubJet_R0p1_ThetaResponse2D;
-  IncBentPtBentTwoSubJet_R0p1_ThetaResponse2D.Setup (hMeas_rg, hTrue_rg );
-
-  RooUnfoldResponse IncPriorBentPtTwoSubJet_R0p1_ZResponse2D;
-  IncPriorBentPtTwoSubJet_R0p1_ZResponse2D.Setup (hMeas, hTrue );
-  RooUnfoldResponse IncPtPriorBentTwoSubJet_R0p1_ZResponse2D;
-  IncPtPriorBentTwoSubJet_R0p1_ZResponse2D.Setup (hMeas, hTrue );  
-  RooUnfoldResponse IncPriorBentPtPriorBentTwoSubJet_R0p1_ZResponse2D;
-  IncPriorBentPtPriorBentTwoSubJet_R0p1_ZResponse2D.Setup (hMeas, hTrue );
-
-  RooUnfoldResponse IncPriorBentPtTwoSubJet_R0p1_ThetaResponse2D;
-  IncPriorBentPtTwoSubJet_R0p1_ThetaResponse2D.Setup (hMeas_rg, hTrue_rg );
-  RooUnfoldResponse IncPtPriorBentTwoSubJet_R0p1_ThetaResponse2D;
-  IncPtPriorBentTwoSubJet_R0p1_ThetaResponse2D.Setup (hMeas_rg, hTrue_rg );  
-  RooUnfoldResponse IncPriorBentPtPriorBentTwoSubJet_R0p1_ThetaResponse2D;
-  IncPriorBentPtPriorBentTwoSubJet_R0p1_ThetaResponse2D.Setup (hMeas_rg, hTrue_rg );
-
-  //! ptbin1 
-  RooUnfoldResponse IncTwoSubJet_R0p1_ZResponse1D_ptbin1;
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin1.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin1;
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin1.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin1;
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin1.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncTwoSubJet_R0p1_ThetaResponse1D_ptbin1;
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin1.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin1;
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin1.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin1;
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin1.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);;
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin1;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin1.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin1;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin1.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin1;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin1.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin1;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin1.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin1;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin1.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin1;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin1.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-
-  //! ptbin2 
-  RooUnfoldResponse IncTwoSubJet_R0p1_ZResponse1D_ptbin2;
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin2.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin2;
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin2.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin2;
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin2.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncTwoSubJet_R0p1_ThetaResponse1D_ptbin2;
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin2.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin2;
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin2.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin2;
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin2.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin2;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin2.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin2;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin2.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin2;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin2.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin2;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin2.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin2;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin2.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin2;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin2.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-
-  //! ptbin3 
-  RooUnfoldResponse IncTwoSubJet_R0p1_ZResponse1D_ptbin3;
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin3.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin3;
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin3.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin3;
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin3.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncTwoSubJet_R0p1_ThetaResponse1D_ptbin3;
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin3.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin3;
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin3.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin3;
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin3.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin3;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin3.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin3;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin3.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin3;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin3.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin3;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin3.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin3;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin3.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin3;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin3.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-
-  //! ptbin4 
-  RooUnfoldResponse IncTwoSubJet_R0p1_ZResponse1D_ptbin4;
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin4.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin4;
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin4.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin4;
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin4.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncTwoSubJet_R0p1_ThetaResponse1D_ptbin4;
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin4.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin4;
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin4.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin4;
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin4.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin4;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin4.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin4;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin4.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin4;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin4.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin4;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin4.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin4;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin4.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin4;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin4.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-
-  //! ptbin5 
-  RooUnfoldResponse IncTwoSubJet_R0p1_ZResponse1D_ptbin5;
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin5.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin5;
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin5.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin5;
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin5.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncTwoSubJet_R0p1_ThetaResponse1D_ptbin5;
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin5.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin5;
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin5.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin5;
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin5.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin5;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin5.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin5;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin5.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin5;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin5.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin5;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin5.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin5;
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin5.Setup(hMeas_zg_1Dtest, hTrue_zg_1Dtest);
-  RooUnfoldResponse IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin5;
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin5.Setup(hMeas_rg_1Dtest, hTrue_rg_1Dtest);
-
-  
-
-  
-  
-  TH2D* IncTruth2D = new TH2D( "IncTruth2D", "TRAIN z_{g}^{lead} vs. p_{T}^{lead}, Pythia6;p_{T}^{lead};z_{g}^{lead}", nPtBinsTrue, ptminTrue, ptmaxTrue, nZgBinsTrue, zgminTrue, zgmaxTrue);
-  TH2D* IncMeas2D  = new TH2D( "IncMeas2D", "TRAIN z_{g}^{lead} vs. p_{T}^{lead}, Pythia6 #oplus GEANT;p_{T}^{lead};z_{g}^{lead}", nPtBinsMeas, ptminMeas, ptmaxMeas, nZgBinsMeas, zgminMeas, zgmaxMeas);  
-  TH1D * IncJetpTMeasMCClosure1D = new TH1D("IncJetpTMeasMCClosure1D","", nPtBinsMeas, ptminMeas, ptmaxMeas);
-  TH1D * IncJetpTMeasTestMCClosure1D = new TH1D("IncJetpTMeasTestMCClosure1D","", nPtBinsMeas, ptminMeas, ptmaxMeas);
-  TH1D * IncJetpTTruthMCClosure1D = new TH1D("IncJetpTTruthMCClosure1D","", nPtBinsTrue, ptminTrue, ptmaxTrue);  
-  TH2D* IncTestTruth2D = new TH2D( "IncTestTruth2D", "TEST z_{g}^{lead} vs. p_{T}^{lead}, Pythia6;p_{T}^{lead};z_{g}^{lead}", nPtBinsTrue, ptminTrue, ptmaxTrue, nZgBinsTrue, zgminTrue, zgmaxTrue);
-  TH2D* IncTestMeas2D  = new TH2D( "IncTestMeas2D", "TEST z_{g}^{lead} vs. p_{T}^{lead}, Pythia6 #oplus GEANT;p_{T}^{lead};z_{g}^{lead}", nPtBinsMeas, ptminMeas, ptmaxMeas, nZgBinsMeas, zgminMeas, zgmaxMeas);
-
-  TH2D* IncTruth2D_rg = new TH2D( "IncTruth2D_rg", "TRAIN R_{g}^{lead} vs. p_{T}^{lead}, Pythia6;p_{T}^{lead};R_{g}^{lead}", nPtBinsTrue, ptminTrue, ptmaxTrue, nRgBinsTrue, rgminTrue, rgmaxTrue);
-  TH2D* IncMeas2D_rg  = new TH2D( "IncMeas2D_rg", "TRAIN R_{g}^{lead} vs. p_{T}^{lead}, Pythia6 #oplus GEANT;p_{T}^{lead};R_{g}^{lead}", nPtBinsMeas, ptminMeas, ptmaxMeas, nRgBinsMeas, rgminMeas, rgmaxMeas);
-  TH2D* IncTestTruth2D_rg = new TH2D( "IncTestTruth2D_rg", "TEST R_{g}^{lead} vs. p_{T}^{lead}, Pythia6;p_{T}^{lead};R_{g}^{lead}", nPtBinsTrue, ptminTrue, ptmaxTrue, nRgBinsTrue, rgminTrue, rgmaxTrue);
-  TH2D* IncTestMeas2D_rg  = new TH2D( "IncTestMeas2D_rg", "TEST R_{g}^{lead} vs. p_{T}^{lead}, Pythia6 #oplus GEANT;p_{T}^{lead};R_{g}^{lead}", nPtBinsMeas, ptminMeas, ptmaxMeas, nRgBinsMeas, rgminMeas, rgmaxMeas);
-
-
-  TH2D* IncTruth2D_TwoSubJet_R0p1_Z = new TH2D( "IncTruth2D_TwoSubJet_R0p1_Z", "", nPtBinsTrue, ptminTrue, ptmaxTrue, nZgBinsTrue, zgminTrue, zgmaxTrue);
-  TH2D* IncMeas2D_TwoSubJet_R0p1_Z  = new TH2D( "IncMeas2D_TwoSubJet_R0p1_Z", "", nPtBinsMeas, ptminMeas, ptmaxMeas, nZgBinsMeas, zgminMeas, zgmaxMeas);
-  TH2D* IncTestTruth2D_TwoSubJet_R0p1_Z = new TH2D( "IncTestTruth2D_TwoSubJet_R0p1_Z", "", nPtBinsTrue, ptminTrue, ptmaxTrue, nZgBinsTrue, zgminTrue, zgmaxTrue);
-  TH2D* IncTestMeas2D_TwoSubJet_R0p1_Z  = new TH2D( "IncTestMeas2D_TwoSubJet_R0p1_Z", "", nPtBinsMeas, ptminMeas, ptmaxMeas, nZgBinsMeas, zgminMeas, zgmaxMeas);
-
-  TH2D* IncTruth2D_TwoSubJet_R0p1_Theta = new TH2D( "IncTruth2D_TwoSubJet_R0p1_Theta", "", nPtBinsTrue, ptminTrue, ptmaxTrue, nRgBinsTrue, rgminTrue, rgmaxTrue);
-  TH2D* IncMeas2D_TwoSubJet_R0p1_Theta  = new TH2D( "IncMeas2D_TwoSubJet_R0p1_Theta", "", nPtBinsMeas, ptminMeas, ptmaxMeas, nRgBinsMeas, rgminMeas, rgmaxMeas);
-  TH2D* IncTestTruth2D_TwoSubJet_R0p1_Theta = new TH2D( "IncTestTruth2D_TwoSubJet_R0p1_Theta", "", nPtBinsTrue, ptminTrue, ptmaxTrue, nRgBinsTrue, rgminTrue, rgmaxTrue);
-  TH2D* IncTestMeas2D_TwoSubJet_R0p1_Theta  = new TH2D( "IncTestMeas2D_TwoSubJet_R0p1_Theta", "", nPtBinsMeas, ptminMeas, ptmaxMeas, nRgBinsMeas, rgminMeas, rgmaxMeas);
-
-  
-  TH2D* DeltaPtvsPt = new TH2D( "DeltaPtvsPt", "Delta p_{T} vs. p_{T}, Pythia6", nPtBinsTrue, ptminTrue, ptmaxTrue, 80, -5, 5);
-  TH2D* DeltaPtvsTwoSubJet_R0p1_Z = new TH2D( "DeltaPtvsTwoSubJet_R0p1_Z", "Delta p_{T} vs. TwoSubJet_R0p1_Z, Pythia6", nZgBinsTrue, zgminTrue, zgmaxTrue, 80, -5, 5);
-  TH2D* DeltaPtvsTwoSubJet_R0p1_Theta = new TH2D( "DeltaPtvsTwoSubJet_R0p1_Theta", "Delta p_{T} vs. TwoSubJet_R0p1_Theta, Pythia6", nRgBinsTrue, rgminTrue, rgmaxTrue, 80, -5, 5);
-
-  TH2D* DeltaTwoSubJet_R0p1_ZvsPt = new TH2D( "DeltaTwoSubJet_R0p1_ZvsPt", "DeltaTwoSubJet_R0p1_Z vs. p_{T}, Pythia6", nPtBinsTrue, ptminTrue, ptmaxTrue, 80, -0.5, 0.5);
-  TH2D* DeltaTwoSubJet_R0p1_ZvsTwoSubJet_R0p1_Z = new TH2D( "DeltaTwoSubJet_R0p1_ZvsTwoSubJet_R0p1_Z", "DeltaTwoSubJet_R0p1_Z vs. TwoSubJet_R0p1_Z, Pythia6", nZgBinsTrue, zgminTrue, zgmaxTrue, 80, -0.5, 0.5);
-  TH2D* DeltaTwoSubJet_R0p1_ZvsTwoSubJet_R0p1_Theta = new TH2D( "DeltaTwoSubJet_R0p1_ZvsTwoSubJet_R0p1_Theta", "DeltaTwoSubJet_R0p1_Z vs. Mj, Pythia6", nRgBinsTrue, rgminTrue, rgmaxTrue, 80, -0.5, 0.5);
-  
-  TH2D* DeltaTwoSubJet_R0p1_ThetavsPt = new TH2D( "DeltaTwoSubJet_R0p1_ThetavsPt", "DeltaTwoSubJet_R0p1_Theta vs. p_{T}, Pythia6", nPtBinsTrue, ptminTrue, ptmaxTrue, 80, -0.5, 0.5);
-  TH2D* DeltaTwoSubJet_R0p1_ThetavsTwoSubJet_R0p1_Z = new TH2D( "DeltaTwoSubJet_R0p1_ThetavsTwoSubJet_R0p1_Z", "DeltaTwoSubJet_R0p1_Theta vs. TwoSubJet_R0p1_Z, Pythia6", nZgBinsTrue, zgminTrue, zgmaxTrue, 80, -0.5, 0.5);
-  TH2D* DeltaTwoSubJet_R0p1_ThetavsTwoSubJet_R0p1_Theta = new TH2D( "DeltaTwoSubJet_R0p1_ThetavsTwoSubJet_R0p1_Theta", "DeltaTwoSubJet_R0p1_Theta vs. TwoSubJet_R0p1_Theta, Pythia6", nRgBinsTrue, rgminTrue, rgmaxTrue, 80, -0.5, 0.5);
-  
-
-  //! Loop over particle level
-
-  int missed=0;
   int N = McChain->GetEntries();
-  for ( Long64_t mcEvi = 0; mcEvi<N  ; ++mcEvi ){
-    if ( !(mcEvi%10000) ) cout << "Working on " << mcEvi << " / " << N << endl;
+  int M = PpChain->GetEntries();
+
+  vector<int> GeantEntries;
+  for (Long64_t mcEvi = 0; mcEvi < (N); ++mcEvi)
+  {
+
+    // mcEvi=(mcEvil % N);
+
+    if (!(mcEvi % 10000))
+      cout << "Working on " << mcEvi << " / " << N << endl
+           << M << endl;
     McChain->GetEntry(mcEvi);
 
-    if ( McJets->GetEntries() != mcnjets ){
+    if (McJets->GetEntries() != mcnjets)
+    {
       cerr << "McJets->GetEntries() != mcnjets" << endl;
       return -1;
     }
-    
-    if(RADIUS == 4 &&
-       (mcEvi == 227376 || mcEvi == 227417 ||
-	mcEvi == 107716 || mcEvi == 105889 ||
-	mcEvi == 153437 || mcEvi == 226949 ||
-	mcEvi == 226988 || mcEvi == 105616 ||
-	mcEvi == 153089)) //! high weight events 
-      continue;
-    
+
     //! Fill results in vectors for easier manipulation
     //! Also check whether there's something true in the acceptance
-    bool TruthInAcceptance=false;
-    vector<RootResultStruct> mcresult;
-    for (int j=0; j<mcnjets; ++j ){
-      TStarJetVectorJet* mcjet = (TStarJetVectorJet*) McJets->At(j);
+    bool TruthInAcceptance = false;
+    vector<ResultStruct> mcresult;
+    for (int j = 0; j < mcnjets; ++j)
+    {
 
-      //! Skip high weight outliers
-      if ( RejectHiweights && NewGeantWeightReject ( mcjet->Pt(), mcweight, 2 ) )  {
-	cout << "Skipping JET with pt=" << mcjet->Pt() << " due to high weight" << endl;
-	continue;
-      }
+      // get the values for the current jet
+      TStarJetVectorJet *mcjet = (TStarJetVectorJet *)McJets->At(j);
+      double mcPT = mcpT->at(j);
+      double mcE1 = mcE->at(j);
+      double mcKT = mckT->at(j);
+      double mcTf = mctf->at(j);
+      double mcMu = mcmu->at(j);
+      vector<double> mcE_Jet = mcE_Vec->at(j);
+      vector<double> mcpt_Jet = mcpt_Vec->at(j);
+      vector<double> mcphi_Jet = mcphi_Vec->at(j);
+      vector<double> mceta_Jet = mceta_Vec->at(j);
 
-      //! Ok, record
-      if ( fabs ( mcjet->Eta() ) < EtaCut ) {
-	mcresult.push_back( RootResultStruct(*mcjet,
-					     mcTwoSubJet_R0p1_Z[j], mcTwoSubJet_R0p1_Theta[j],
-					     mcTwoSubJet_R0p1_LeadpT[j], mcTwoSubJet_R0p1_SubLeadpT[j]));	
-	TruthInAcceptance=true;
+      //! Fill in jet into pythia result
+
+      if (fabs(mcjet->Eta()) < EtaCut)
+      {
+
+        mcresult.push_back(ResultStruct(*mcjet, mcZg, mcRg, mcPT, mcKT, mcTf, mcMu, mcE_Jet, mcpt_Jet, mcphi_Jet, mceta_Jet, mcweight));
+        TruthInAcceptance = true;
       }
     }
 
-    if ( !TruthInAcceptance ) {
+    if (!TruthInAcceptance)
+    {
       //! Skip this event, but don't count it as a loss
       continue;
     }
 
-
-    //! Record Truth
-    for ( vector<RootResultStruct>::iterator mcit = mcresult.begin(); mcit != mcresult.end(); ++mcit ){
-      if ( !PrepClosure || mcEvi%2 == 0){
-	IncJetpTTruthMCClosure1D->Fill(mcit->orig.Pt(), mcweight);
-	// IncTruth2D->Fill( mcit->orig.Pt(), mcit->zg, mcweight );
-	// IncTruth2D_rg->Fill( mcit->orig.Pt(), mcit->rg, mcweight );
-	IncTruth2D_TwoSubJet_R0p1_Z->Fill( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight );
-	IncTruth2D_TwoSubJet_R0p1_Theta->Fill( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight );
-      }
-      if ( !PrepClosure || mcEvi%2 == 1){
-	// IncTestTruth2D->Fill( mcit->orig.Pt(), mcit->zg, mcweight );
-	// IncTestTruth2D_rg->Fill( mcit->orig.Pt(), mcit->rg, mcweight );
-	IncTestTruth2D_TwoSubJet_R0p1_Z->Fill( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight );
-	IncTestTruth2D_TwoSubJet_R0p1_Theta->Fill( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight );
-      }
-
-      
-      hGenJetPt_QA->Fill(mcit->orig.Pt(), mcweight);
-      hGenJetPt->Fill(mcit->orig.Pt(), mcweight);
-      hGenJetEta->Fill(mcit->orig.Eta(), mcweight);
-      hGenJetPhi->Fill(mcit->orig.Phi(), mcweight);
-
-      int ptbin=-1;
-      for(int i = 0; i<npubptbins; ++i){
-	if(mcit->orig.Pt() > pubptbins[i])
-	  ptbin = i;
-      }
-      if(ptbin == -1)
-	continue;
-
-      
-      // hGen_Zg[ptbin]->Fill(mcit->zg, mcweight);
-      // hGen_Rg[ptbin]->Fill(mcit->rg, mcweight);
-      hGen_TwoSubJet_R0p1_Z[ptbin]->Fill(mcit->TwoSubJet_R0p1_Z, mcweight);
-      hGen_TwoSubJet_R0p1_Theta[ptbin]->Fill(mcit->TwoSubJet_R0p1_Theta, mcweight);
-      hGen_TwoSubJet_R0p1_LeadpT[ptbin]->Fill(mcit->TwoSubJet_R0p1_LeadpT, mcweight);
-      hGen_TwoSubJet_R0p1_SubLeadpT[ptbin]->Fill(mcit->TwoSubJet_R0p1_SubLeadpT, mcweight);
-      
-      
+    // Still in MC level loop, get matching Geant Event
+    Long64_t ppevi = -1;
+    ppevi = PpChain->GetEntryNumberWithIndex(mcrunid, mceventid);
+    if (ppevi >= 0)
+    {
+      GeantEntries.push_back(ppevi);
+      MatchedGeantEventNumber++;
     }
+    // bug in new embedding
+    if (mctotalpT > 23.11003 && mctotalpT < 23.11004)
+    {
+      continue;
+    } // 11-15
+    if (mctotalpT > 33.749385 && mctotalpT < 33.749405)
+    {
+      continue;
+    } // 15-20
+    if (mctotalpT > 47.09071 && mctotalpT < 47.09072)
+    {
+      continue;
+    } // 20-25
+    if (mctotalpT > 9.62226 && mctotalpT < 9.62227)
+    {
+      continue;
+    } // 2-3
+    if (mctotalpT > 46.63831 && mctotalpT < 46.63832)
+    {
+      continue;
+    } // 25-35
+    if (mctotalpT > 6.90831 && mctotalpT < 6.90832)
+    {
+      continue;
+    } // 3-4
+    if (mctotalpT > 82.68752 && mctotalpT < 82.68753)
+    {
+      continue;
+    } // 35-45
+    if (mctotalpT > 100.25616 && mctotalpT < 100.25617)
+    {
+      continue;
+    } // 45-55
+    if (mctotalpT > 75.10883 && mctotalpT < 75.10884)
+    {
+      continue;
+    } // 55-999
+    if (mctotalpT > 3.75004 && mctotalpT < 3.75005)
+    {
+      continue;
+    } // 5-7
+    if (mctotalpT > 6.47623 && mctotalpT < 6.47624)
+    {
+      continue;
+    } // 7-9
+    if (mctotalpT > 4.22790 && mctotalpT < 4.22791)
+    {
+      continue;
+    } // 9-11
+    // Decide which sample event is sorted into
+    MCRandom = rand();
+    // cout << MCRandom << endl;
 
-    
-  
-    //! Get corresponding geant event
-    Long64_t ppevi=-1;
-    ppevi = PpChain->GetEntryNumberWithIndex( mcrunid, mceventid );
-
-    if ( ppevi < 0 ){      
-      //! Here is where we for the first time could file for loss
-      if ( UseMiss ){
-	for ( vector<RootResultStruct>::iterator mcit = mcresult.begin(); mcit != mcresult.end(); ++mcit ){
-	  
-	  IncPtResponse.Miss( mcit->orig.Pt(), mcweight );
-	  IncPtTwoSubJet_R0p1_ZResponse2D.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight );
-	  IncPtTwoSubJet_R0p1_ThetaResponse2D.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight );
-
-	  hGenMissJetPt->Fill(mcit->orig.Pt(), mcweight);
-	
-	  if ( !PrepClosure || mcEvi%2 == 0){	    
-	    IncPtResponse_MCClosure.Miss( mcit->orig.Pt(), mcweight );
-	    IncPtTwoSubJet_R0p1_ZResponse2D_MCClosure.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight );
-	    IncPtTwoSubJet_R0p1_ThetaResponse2D_MCClosure.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight );   
-	  }
-
-	  IncBentPtResponse.Miss ( mcit->orig.Pt(), mcweight );
-	  IncBentPtTwoSubJet_R0p1_ZResponse2D.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight );
-	  IncBentPtTwoSubJet_R0p1_ThetaResponse2D.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight );
-	  IncPtBentTwoSubJet_R0p1_ZResponse2D.Miss(mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight);
-	  IncPtBentTwoSubJet_R0p1_ThetaResponse2D.Miss(mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight);
-
-	  int ptbin=-1;
-	  for(int i = 0; i<npubptbins; ++i){
-	    if(mcit->orig.Pt() > pubptbins[i])
-	      ptbin = i;
-	  }
-
-	  if(ptbin!=-1){
-	    //! get the prior shift from the maximum of the ratio difference for pythia-6 between pythia-8 and herwig-7
-	    double trueshiftptwt = findweight(mcit->orig.Pt(), hJetpT_PY6_Ratio_PY8, hJetpT_PY6_Ratio_HW7);
-	    IncPriorBentPtResponse.Miss ( mcit->orig.Pt(), mcweight*trueshiftptwt);
-
-	    double priorBentTwoSubJet_R0p1_Zwt = findweight(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[ptbin], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[ptbin]);
-	    double priorBentTwoSubJet_R0p1_Thetawt = findweight(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[ptbin], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[ptbin]);
-	    IncPriorBentPtResponse.Miss ( mcit->orig.Pt(), mcweight*trueshiftptwt);
-	    IncPriorBentPtTwoSubJet_R0p1_ZResponse2D.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight*trueshiftptwt);
-	    IncPriorBentPtTwoSubJet_R0p1_ThetaResponse2D.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight*trueshiftptwt);
-	    IncPtPriorBentTwoSubJet_R0p1_ZResponse2D.Miss(mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt);
-	    IncPtPriorBentTwoSubJet_R0p1_ThetaResponse2D.Miss(mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt);
-	    double priorBentPY8TwoSubJet_R0p1_Zwt = findweight_v2(mcit->orig.Pt(), hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[ptbin]);
-	    double priorBentPY8TwoSubJet_R0p1_Thetawt = findweight_v2(mcit->orig.Pt(), hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[ptbin]);
-	    double priorBentHW7TwoSubJet_R0p1_Zwt = findweight_v2(mcit->orig.Pt(), hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[ptbin]);
-	    double priorBentHW7TwoSubJet_R0p1_Thetawt = findweight_v2(mcit->orig.Pt(), hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[ptbin]);
-	  
-	    double priorBentTwoSubJet_R0p1_Zwt_max;   
-	    double priorBentTwoSubJet_R0p1_Thetawt_max;    
-	    double priorBentTwoSubJet_R0p1_Zwt_max_env;
-	    double priorBentTwoSubJet_R0p1_Thetawt_max_env;
-	    double priorBentTwoSubJet_R0p1_Zwt_avg;
-	    double priorBentTwoSubJet_R0p1_Thetawt_avg;
-	  
-
-	    if(mcit->orig.Pt() > 15 && mcit->orig.Pt() < 20){
-	      IncTwoSubJet_R0p1_ZResponse1D_ptbin1.Miss( mcit->TwoSubJet_R0p1_Z, mcweight);
-	      IncTwoSubJet_R0p1_ThetaResponse1D_ptbin1.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight);
-	      IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin1.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	      IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin1.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	      IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin1.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	      IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin1.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	      priorBentTwoSubJet_R0p1_Zwt_max = findweight(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[1]);
-	      priorBentTwoSubJet_R0p1_Thetawt_max = findweight(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[1]);
-	      priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[1]);
-	      priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[1]);
-	      priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[1]);
-	      priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[1]);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin1.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin1.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin1.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin1.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin1.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin1.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);	    
-	    }
-	    if(mcit->orig.Pt() > 20 && mcit->orig.Pt() < 25){
-	      IncTwoSubJet_R0p1_ZResponse1D_ptbin2.Miss( mcit->TwoSubJet_R0p1_Z, mcweight);
-	      IncTwoSubJet_R0p1_ThetaResponse1D_ptbin2.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight);
-	      IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin2.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	      IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin2.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	      IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin2.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	      IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin2.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	      priorBentTwoSubJet_R0p1_Zwt_max = findweight(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[2]);
-	      priorBentTwoSubJet_R0p1_Thetawt_max = findweight(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[2]);
-	      priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[2]);
-	      priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[2]);
-	      priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[2]);
-	      priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[2]);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin2.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin2.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin2.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin2.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin2.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin2.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	    }
-	    if(mcit->orig.Pt() > 25 && mcit->orig.Pt() < 30){
-	      IncTwoSubJet_R0p1_ZResponse1D_ptbin3.Miss( mcit->TwoSubJet_R0p1_Z, mcweight);
-	      IncTwoSubJet_R0p1_ThetaResponse1D_ptbin3.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight);
-	      IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin3.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	      IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin3.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	      IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin3.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	      IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin3.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	      priorBentTwoSubJet_R0p1_Zwt_max = findweight(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[3]);
-	      priorBentTwoSubJet_R0p1_Thetawt_max = findweight(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[3]);
-	      priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[3]);
-	      priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[3]);
-	      priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[3]);
-	      priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[3]);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin3.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin3.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin3.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin3.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin3.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin3.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	    }
-	    if(mcit->orig.Pt() > 30 && mcit->orig.Pt() < 40){
-	      IncTwoSubJet_R0p1_ZResponse1D_ptbin4.Miss( mcit->TwoSubJet_R0p1_Z, mcweight);
-	      IncTwoSubJet_R0p1_ThetaResponse1D_ptbin4.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight);
-	      IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin4.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	      IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin4.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	      IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin4.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	      IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin4.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	      priorBentTwoSubJet_R0p1_Zwt_max = findweight(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[4]);
-	      priorBentTwoSubJet_R0p1_Thetawt_max = findweight(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[4]);
-	      priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[4]);
-	      priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[4]);
-	      priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[4]);
-	      priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[4]);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin4.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin4.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin4.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin4.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin4.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin4.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	    }
-	    if(mcit->orig.Pt() > 40 && mcit->orig.Pt() < 60){
-	      IncTwoSubJet_R0p1_ZResponse1D_ptbin5.Miss( mcit->TwoSubJet_R0p1_Z, mcweight);
-	      IncTwoSubJet_R0p1_ThetaResponse1D_ptbin5.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight);
-	      IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin5.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	      IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin5.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	      IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin5.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	      IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin5.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	      priorBentTwoSubJet_R0p1_Zwt_max = findweight(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[5]);
-	      priorBentTwoSubJet_R0p1_Thetawt_max = findweight(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[5]);
-	      priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[5]);
-	      priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[5]);
-	      priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[5]);
-	      priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[5]);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin5.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin5.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin5.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin5.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	      IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin5.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	      IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin5.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	    }
-
-	  }
-	  
-
-	}
-
-	//! Skip this event
-	missed++;
-	continue;
+    // fill in regardless of match/miss to get reference and check which events are candidates for high weight and throw them out
+    int isBad = 0;
+    int weightBin = -1;
+    int old = -1;
+    for (int i = 0; i < vptbins.size(); ++i)
+    {
+      if (mcweight == XSEC[i] / NUMBEROFEVENT[i])
+      {
+        old = 0;
+        weightBin = i;
       }
     }
+    for (vector<ResultStruct>::iterator mcit = mcresult.begin(); mcit != mcresult.end(); ++mcit)
+    {
+      double Jetpt = mcit->orig.perp();
+      double Jetpt2 = pow(Jetpt, 2);
+      if (old == 0)
+      {
+        if (Jetpt > MAXPT[weightBin])
+        {
+          isBad = 1;
+        }
+      }
+    }
+    if (isBad == 1)
+    {
+      continue;
+    }
 
-    
-  
-    //! Get geant
+    // matching geant event not found, fill in pythia event as a miss
+    if (ppevi < 0)
+    {
+
+      for (vector<ResultStruct>::iterator mcit = mcresult.begin(); mcit != mcresult.end(); ++mcit)
+      {
+
+        // cout << mcit->weight;
+        double Jetpt = mcit->orig.perp();
+        double Jeteta = mcit->orig.eta();
+        double Jetphi = mcit->orig.phi();
+        // Fill in jet quantities like mass
+        // roll random number at jet level
+        // MCRandom=rand();
+
+        JetPt_True->Fill(Jetpt, mcit->weight);
+        JetPt_TriggerMissed->Fill(Jetpt, mcit->weight);
+        if (Jetpt > 10)
+        {
+          JetEtaPhi_True->Fill(Jeteta, Jetphi, mcit->weight);
+          JetEtaPhi_TriggerMissed->Fill(Jeteta, Jetphi, mcit->weight);
+        }
+
+        NConstituentsmc->Fill(Jetpt, mcit->E.size(), mcit->weight);
+        // Fill in substructure variables such as EEC for entire missed jet
+        for (unsigned i = 0; i < mcit->E.size(); ++i)
+        {
+          // Fill in missed constituents
+          ConstituentpTmc->Fill(Jetpt, mcit->pt[i], mcit->weight);
+          if (mcit->pt[i] < ConMinPt)
+          {
+            continue;
+          }
+          for (unsigned j = i + 1; j < mcit->E.size(); ++j)
+          {
+            if (mcit->pt[j] < ConMinPt)
+            {
+              continue;
+            }
+            double deltaPhiMiss = (double)abs(mcit->phi[i] - mcit->phi[j]);
+            // calculate distance between the pair
+            if (deltaPhiMiss > M_PI)
+            {
+              deltaPhiMiss = deltaPhiMiss - (2 * M_PI);
+            }
+            double deltaEtaMiss = (double)mcit->eta[i] - mcit->eta[j];
+            double deltaRMiss = sqrt(pow(deltaPhiMiss, 2) + pow(deltaEtaMiss, 2));
+
+            double Jetpt2 = pow(Jetpt, 2);
+
+            // check weighting, will remove
+            // EECWeightMiss=1;
+            // Jetpt2=1;
+
+            // check that you're filling in within bounds
+            if (Jetpt > TruthJetBounds[0] && Jetpt < TruthJetBounds[TruthJetBins])
+            {
+
+              EventWeightMiss = (mcit->weight);
+              JetPtMiss = (mcit->pT);
+              ZgMiss = (mcit->zg);
+              kTMiss = (mcit->kT);
+              RgMiss = (mcit->rg);
+              MuMiss = (mcit->mu);
+              DeltaRMiss = (log(deltaRMiss));
+
+              // roll random number at correlation level
+              // MCRandom=rand();
+
+              // Sort into samples
+              if ((MCRandom % 2) == 0)
+              {
+                ++RandomA;
+                SampleMiss = (1);
+              }
+              else
+              {
+                ++RandomB;
+                SampleMiss = (2);
+              }
+
+              // cout << SampleMiss << endl;
+
+              TriggerMissed = 1;
+
+              MissTree->Fill();
+              MissEventNumber++;
+            }
+            // end of filling in
+          }
+        }
+      }
+      continue;
+    }
+
+    // Get Geant event if its found
     PpChain->GetEntry(ppevi);
-    vector<RootResultStruct> ppresult;
-    for (int j=0; j<ppnjets; ++j ){
-      TStarJetVectorJet* ppjet = (TStarJetVectorJet*) PpJets->At(j);
-      
-      if ( RejectHiweights && NewGeantWeightReject ( ppjet->Pt(), mcweight, 12 ) )  {
-	cout << "Skipping RECO JET with pt=" << ppjet->Pt() << " due to high weight" << endl;
-	continue;
-      }
-      
+    if (ppweight != mcweight)
+    {
+      cout << "hey hey hey we got a problem here " << ppweight << " " << mcweight << endl;
+    }
+    vector<ResultStruct> ppresult;
+
+    for (int j = 0; j < ppnjets; ++j)
+    {
+      TStarJetVectorJet *ppjet = (TStarJetVectorJet *)PpJets->At(j);
+      double ppZg = zg->at(j);
+      double ppRg = rg->at(j);
+      double ppPT = pT->at(j);
+      double ppE1 = E->at(j);
+      double ppKT = kT->at(j);
+      double ppTf = tf->at(j);
+      double ppMu = mu->at(j);
+      vector<double> ppE_Jet = ppE_Vec->at(j);
+      vector<double> pppt_Jet = pppt_Vec->at(j);
+      vector<double> ppphi_Jet = ppphi_Vec->at(j);
+      vector<double> ppeta_Jet = ppeta_Vec->at(j);
+
       //! Ok, record
-      if ( fabs ( ppjet->Eta() ) < EtaCut ) {
-	ppresult.push_back( RootResultStruct(*ppjet,
-					     ppTwoSubJet_R0p1_Z[j], ppTwoSubJet_R0p1_Theta[j],
-					     ppTwoSubJet_R0p1_LeadpT[j], ppTwoSubJet_R0p1_SubLeadpT[j]));
+      if (fabs(ppjet->Eta()) < EtaCut)
+      {
+        ppresult.push_back(ResultStruct(*ppjet, ppZg, ppRg, ppPT, ppKT, ppTf, ppMu, ppE_Jet, pppt_Jet, ppphi_Jet, ppeta_Jet, ppweight));
       }
     }
 
-    //! Record Truth
-    for ( vector<RootResultStruct>::iterator mcit = mcresult.begin(); mcit != mcresult.end(); ++mcit ){      
-      hGenJetPt_v2->Fill(mcit->orig.Pt(), mcweight);
-    }
-    
-    
-  
-    // Record geant
-    for ( vector<RootResultStruct>::iterator ppit = ppresult.begin(); ppit != ppresult.end(); ++ppit ){
-      if ( !PrepClosure || mcEvi%2 == 0){
-	IncJetpTMeasTestMCClosure1D->Fill(ppit->orig.Pt(), ppweight);
-	IncMeas2D_TwoSubJet_R0p1_Z->Fill( ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Z, ppweight );
-	IncMeas2D_TwoSubJet_R0p1_Theta->Fill( ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Theta, ppweight );
-      }
-      if ( !PrepClosure || mcEvi%2 == 1){
-	IncJetpTMeasMCClosure1D->Fill(ppit->orig.Pt(), ppweight);
-	IncTestMeas2D_TwoSubJet_R0p1_Z->Fill( ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Z, ppweight );
-	IncTestMeas2D_TwoSubJet_R0p1_Theta->Fill( ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Theta, ppweight );
-      }
+    for (vector<ResultStruct>::iterator ppit = ppresult.begin(); ppit != ppresult.end(); ++ppit)
+    {
+      double Jetpt = ppit->orig.perp();
+      double Jetpt2 = pow(Jetpt, 2);
 
-      hRecoJetPt_QA->Fill(ppit->orig.Pt(), ppweight);
-      hRecoJetPt->Fill(ppit->orig.Pt(), ppweight);
-      hRecoJetEta->Fill(ppit->orig.Eta(), ppweight);
-      hRecoJetPhi->Fill(ppit->orig.Phi(), ppweight);
-
-      int ptbin=-1;
-      for(int i = 0; i<npubptbins; ++i){
-	if(ppit->orig.Pt() > pubptbins[i])
-	  ptbin = i;
-      }
-      if(ptbin == -1)
-	continue;
-
-      hReco_TwoSubJet_R0p1_Z[ptbin]->Fill(ppit->TwoSubJet_R0p1_Z, ppweight);
-      hReco_TwoSubJet_R0p1_Theta[ptbin]->Fill(ppit->TwoSubJet_R0p1_Theta, ppweight);
-      hReco_TwoSubJet_R0p1_LeadpT[ptbin]->Fill(ppit->TwoSubJet_R0p1_LeadpT, ppweight);
-      hReco_TwoSubJet_R0p1_SubLeadpT[ptbin]->Fill(ppit->TwoSubJet_R0p1_SubLeadpT, ppweight);
-            
-    }
-
-
-    
-    //! Sort them together
-    vector<MatchedRootResultStruct> MatchedResult;
-    for ( vector<RootResultStruct>::iterator mcit = mcresult.begin(); mcit != mcresult.end(); ){
-      bool matched=false;
-      for ( vector<RootResultStruct>::iterator ppit = ppresult.begin(); ppit != ppresult.end(); ){
-	if ( mcit->orig.DeltaR( ppit->orig )< RCut ){
-	  MatchedResult.push_back ( MatchedRootResultStruct ( *mcit, *ppit ) );
-	  ppit = ppresult.erase( ppit );
-	  matched=true;
-	  break;
-	} else{
-	  ++ppit;
-	}
-      }
-      if ( matched ) {
-	hGenMatchedJetPt->Fill(mcit->orig.Pt(), mcweight);
-	mcit = mcresult.erase( mcit );
-      } else {
-	hGenUnMatchedJetPt->Fill(mcit->orig.Pt(), mcweight);
-	++mcit;
+      if (Jetpt > MAXPT[weightBin])
+      {
+        isBad = 1;
       }
     }
-  
-
-    // cout<<" size of matched result = "<<MatchedResult.size()<<endl;
-  
-    //! Fill Response
-    for (vector<MatchedRootResultStruct>::iterator res = MatchedResult.begin(); res != MatchedResult.end(); ++res ){
-
-      // cout<<"    in the matched iterator jet pTs, gen and reco = "<<res->second.orig.Pt()<<", "<<res->first.orig.Pt()<<endl;
-      
-      IncPtResponse.Fill( res->second.orig.Pt(), res->first.orig.Pt(), mcweight );
-      IncPtTwoSubJet_R0p1_ZResponse2D.Fill( res->second.orig.Pt(), res->second.TwoSubJet_R0p1_Z,
-					    res->first.orig.Pt(), res->first.TwoSubJet_R0p1_Z, mcweight );
-      IncPtTwoSubJet_R0p1_ThetaResponse2D.Fill( res->second.orig.Pt(), res->second.TwoSubJet_R0p1_Theta,
-						res->first.orig.Pt(), res->first.TwoSubJet_R0p1_Theta, mcweight );
-
-      
-      if(!PrepClosure || mcEvi%2 == 0){
-	IncPtResponse_MCClosure.Fill( res->second.orig.Pt(), res->first.orig.Pt(), mcweight );
-	IncPtTwoSubJet_R0p1_ZResponse2D_MCClosure.Fill( res->second.orig.Pt(), res->second.TwoSubJet_R0p1_Z,
-							res->first.orig.Pt(), res->first.TwoSubJet_R0p1_Z, mcweight );
-	IncPtTwoSubJet_R0p1_ThetaResponse2D_MCClosure.Fill( res->second.orig.Pt(), res->second.TwoSubJet_R0p1_Theta,
-							    res->first.orig.Pt(), res->first.TwoSubJet_R0p1_Theta, mcweight );
-      }
-
-      
-      float truept = res->first.orig.Pt();
-      double randpt = res->second.orig.Pt()*(1-fabs(rand.Gaus(0, 0.05)));
-      IncBentPtResponse.Fill ( randpt, res->first.orig.Pt(), mcweight );
-
-      IncBentPtTwoSubJet_R0p1_ZResponse2D.Fill( randpt, res->second.TwoSubJet_R0p1_Z, res->first.orig.Pt(), res->first.TwoSubJet_R0p1_Z, mcweight );
-      IncBentPtTwoSubJet_R0p1_ThetaResponse2D.Fill( randpt, res->second.TwoSubJet_R0p1_Theta, res->first.orig.Pt(), res->first.TwoSubJet_R0p1_Theta, mcweight );
-     
-      int ptbin=-1;
-      for(int i = 0; i<npubptbins; ++i){
-	if(res->first.orig.Pt() > pubptbins[i])
-	  ptbin = i;
-      }
-
-      // cout<<"ptbin = "<<ptbin<<endl;
-
-      if(ptbin!=-1){
-	//! get the prior shift from the maximum of the ratio difference for pythia-6 between pythia-8 and herwig-7
-
-	
-	double trueshiftptwt = findweight(res->first.orig.Pt(), hJetpT_PY6_Ratio_PY8, hJetpT_PY6_Ratio_HW7);
-	IncPriorBentPtResponse.Fill    ( res->second.orig.Pt(), res->first.orig.Pt(), mcweight*trueshiftptwt);
-	IncPriorBentPtTwoSubJet_R0p1_ZResponse2D.Fill( res->second.orig.Pt(), res->second.TwoSubJet_R0p1_Z, res->first.orig.Pt(), res->first.TwoSubJet_R0p1_Z, mcweight*trueshiftptwt);
-	IncPriorBentPtTwoSubJet_R0p1_ThetaResponse2D.Fill( res->second.orig.Pt(), res->second.TwoSubJet_R0p1_Theta, res->first.orig.Pt(), res->first.TwoSubJet_R0p1_Theta, mcweight*trueshiftptwt);
-	double priorBentTwoSubJet_R0p1_Zwt = findweight(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[ptbin], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[ptbin]);
-	double priorBentTwoSubJet_R0p1_Thetawt = findweight(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[ptbin], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[ptbin]);
-	IncPtPriorBentTwoSubJet_R0p1_ZResponse2D.Fill( res->second.orig.Pt(), res->second.TwoSubJet_R0p1_Z, res->first.orig.Pt(), res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt);
-	IncPtPriorBentTwoSubJet_R0p1_ThetaResponse2D.Fill( res->second.orig.Pt(), res->second.TwoSubJet_R0p1_Theta, res->first.orig.Pt(), res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt);
-	double priorBentPY8TwoSubJet_R0p1_Zwt = findweight_v2(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[ptbin]);
-	double priorBentPY8TwoSubJet_R0p1_Thetawt = findweight_v2(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[ptbin]);
-	double priorBentHW7TwoSubJet_R0p1_Zwt = findweight_v2(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[ptbin]);
-	double priorBentHW7TwoSubJet_R0p1_Thetawt = findweight_v2(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[ptbin]);
-	
-		
-	double priorBentTwoSubJet_R0p1_Zwt_max;   
-	double priorBentTwoSubJet_R0p1_Thetawt_max;    
-	double priorBentTwoSubJet_R0p1_Zwt_max_env;
-	double priorBentTwoSubJet_R0p1_Thetawt_max_env;
-	double priorBentTwoSubJet_R0p1_Zwt_avg;
-	double priorBentTwoSubJet_R0p1_Thetawt_avg;
-
-
-	if(res->first.orig.Pt() > 15 && res->first.orig.Pt() < 20){
-	  IncTwoSubJet_R0p1_ZResponse1D_ptbin1.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight);
-	  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin1.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight);
-	  priorBentTwoSubJet_R0p1_Zwt_max = findweight(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[1]);
-	  priorBentTwoSubJet_R0p1_Thetawt_max = findweight(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[1]);
-	  priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[1]);
-	  priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[1]);
-	  priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[1]);
-	  priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[1]);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin1.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin1.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin1.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin1.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin1.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin1.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin1.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin1.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin1.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin1.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	}
-	if(res->first.orig.Pt() > 20 && res->first.orig.Pt() < 25){
-	  IncTwoSubJet_R0p1_ZResponse1D_ptbin2.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight);
-	  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin2.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight);
-
-	  priorBentTwoSubJet_R0p1_Zwt_max = findweight(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[2]);
-	  priorBentTwoSubJet_R0p1_Thetawt_max = findweight(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[2]);
-	  priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[2]);
-	  priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[2]);
-	  priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[2]);
-	  priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[2]);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin2.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin2.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin2.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin2.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin2.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin2.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin2.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin2.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin2.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin2.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	}
-	if(res->first.orig.Pt() > 25 && res->first.orig.Pt() < 30){
-	  priorBentTwoSubJet_R0p1_Zwt_max = findweight(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[3]);
-	  priorBentTwoSubJet_R0p1_Thetawt_max = findweight(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[3]);
-	  priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[3]);
-	  priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[3]);
-	  priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[3]);
-	  priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[3]);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin3.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin3.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin3.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin3.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin3.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin3.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	  IncTwoSubJet_R0p1_ZResponse1D_ptbin3.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight);
-	  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin3.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin3.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin3.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin3.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin3.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	}
-	if(res->first.orig.Pt() > 30 && res->first.orig.Pt() < 40){
-	  priorBentTwoSubJet_R0p1_Zwt_max = findweight(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[4]);
-	  priorBentTwoSubJet_R0p1_Thetawt_max = findweight(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[4]);
-	  priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[4]);
-	  priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[4]);
-	  priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[4]);
-	  priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[4]);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin4.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin4.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin4.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin4.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin4.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin4.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	  IncTwoSubJet_R0p1_ZResponse1D_ptbin4.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight);
-	  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin4.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin4.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin4.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin4.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin4.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	}
-	if(res->first.orig.Pt() > 40 && res->first.orig.Pt() < 60){
-	  priorBentTwoSubJet_R0p1_Zwt_max = findweight(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[5]);
-	  priorBentTwoSubJet_R0p1_Thetawt_max = findweight(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[5]);
-	  priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[5]);
-	  priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[5]);
-	  priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(res->first.TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[5]);
-	  priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(res->first.TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[5]);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin5.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin5.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin5.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin5.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin5.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin5.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	  IncTwoSubJet_R0p1_ZResponse1D_ptbin5.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight);
-	  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin5.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin5.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin5.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin5.Fill( res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin5.Fill( res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	}
-	
-
-      }
-      
-      
-      DeltaPtvsPt->Fill ( truept,  res->second.orig.Pt()-res->first.orig.Pt(), mcweight);
-      DeltaPtvsTwoSubJet_R0p1_Z->Fill ( res->first.TwoSubJet_R0p1_Z,  res->second.orig.Pt()-res->first.orig.Pt(), mcweight);
-      DeltaPtvsTwoSubJet_R0p1_Theta->Fill ( res->first.TwoSubJet_R0p1_Theta,  res->second.orig.Pt()-res->first.orig.Pt(), mcweight);
-
-      DeltaTwoSubJet_R0p1_ZvsPt->Fill ( truept,  res->second.TwoSubJet_R0p1_Z-res->first.TwoSubJet_R0p1_Z, mcweight);
-      DeltaTwoSubJet_R0p1_ZvsTwoSubJet_R0p1_Z->Fill ( res->first.TwoSubJet_R0p1_Z,  res->second.TwoSubJet_R0p1_Z-res->first.TwoSubJet_R0p1_Z, mcweight);
-      DeltaTwoSubJet_R0p1_ZvsTwoSubJet_R0p1_Theta->Fill ( res->first.TwoSubJet_R0p1_Theta,  res->second.TwoSubJet_R0p1_Z-res->first.TwoSubJet_R0p1_Z, mcweight);
-	
-      DeltaTwoSubJet_R0p1_ThetavsPt->Fill ( truept,  res->second.TwoSubJet_R0p1_Theta-res->first.TwoSubJet_R0p1_Theta, mcweight);
-      DeltaTwoSubJet_R0p1_ThetavsTwoSubJet_R0p1_Theta->Fill ( res->first.TwoSubJet_R0p1_Theta,  res->second.TwoSubJet_R0p1_Theta-res->first.TwoSubJet_R0p1_Theta, mcweight);
-      DeltaTwoSubJet_R0p1_ThetavsTwoSubJet_R0p1_Z->Fill ( res->first.TwoSubJet_R0p1_Z,  res->second.TwoSubJet_R0p1_Theta-res->first.TwoSubJet_R0p1_Theta, mcweight);
-      
-      
-      hMatrixJetPt->Fill(res->second.orig.Pt(), res->first.orig.Pt(), mcweight);
-
-      // hGenMatchedJetPt->Fill(res->first.orig.Pt(), mcweight);
-      hRecoMatchedJetPt->Fill(res->second.orig.Pt(), mcweight);
-      
-      ptbin=-1;
-      for(int i = 0; i<npubptbins; ++i){
-	if(res->second.orig.Pt() > pubptbins[i])
-	  ptbin = i;
-      }
-      if(ptbin != -1){      
-	hPtResponse->Fill(res->second.orig.Pt(), res->first.orig.Pt(), mcweight);
-	hPtResponse_transpose->Fill(res->first.orig.Pt(), res->second.orig.Pt(), mcweight);
-
-	hTwoSubJet_R0p1_ZResponse[ptbin]->Fill(res->second.TwoSubJet_R0p1_Z, res->first.TwoSubJet_R0p1_Z, mcweight);
-	hTwoSubJet_R0p1_ThetaResponse[ptbin]->Fill(res->second.TwoSubJet_R0p1_Theta, res->first.TwoSubJet_R0p1_Theta, mcweight);
-	
-	hJER[ptbin]->Fill((float)(res->second.orig.Pt()/res->first.orig.Pt()), mcweight);
-
-	hJER_TwoSubJet_R0p1_Z[ptbin]->Fill((float)(res->second.TwoSubJet_R0p1_Z/res->first.TwoSubJet_R0p1_Z), mcweight);
-	hJER_TwoSubJet_R0p1_Theta[ptbin]->Fill((float)(res->second.TwoSubJet_R0p1_Theta/res->first.TwoSubJet_R0p1_Theta), mcweight);
-      }
-      
-
-      ptbin=-1;
-      for(int i = 0; i<npubptbins; ++i){
-	if(res->first.orig.Pt() > pubptbins[i])
-	  ptbin = i;
-      }
-      if(ptbin != -1){      
-	hJER_v2[ptbin]->Fill((float)(res->second.orig.Pt()/res->first.orig.Pt()), mcweight);
-	hJER_v2_TwoSubJet_R0p1_Z[ptbin]->Fill((float)(res->second.TwoSubJet_R0p1_Z/res->first.TwoSubJet_R0p1_Z), mcweight);
-	hJER_v2_TwoSubJet_R0p1_Theta[ptbin]->Fill((float)(res->second.TwoSubJet_R0p1_Theta/res->first.TwoSubJet_R0p1_Theta), mcweight);
-
-      }      
+    if (isBad == 1)
+    {
+      continue;
     }
-  
-    
-    //! Fill misses and fakes
-    if ( UseMiss ){
-      for ( vector<RootResultStruct>::iterator mcit = mcresult.begin(); mcit != mcresult.end(); ++mcit ){
-	IncPtResponse.Miss( mcit->orig.Pt(), mcweight );
-	IncPtTwoSubJet_R0p1_ZResponse2D.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight );
-	IncPtTwoSubJet_R0p1_ThetaResponse2D.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight );
 
-	hGenMissJetPt->Fill(mcit->orig.Pt(), mcweight);
-	
-	if ( !PrepClosure || mcEvi%2 == 0){	    
-	  IncPtResponse_MCClosure.Miss( mcit->orig.Pt(), mcweight );
-	  IncPtTwoSubJet_R0p1_ZResponse2D_MCClosure.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight );
-	  IncPtTwoSubJet_R0p1_ThetaResponse2D_MCClosure.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight );	    
-	}
+    // match and Sort Pythia and Geant jets together
+    int totalJetsmc = mcresult.size();
+    int totalJetspp = ppresult.size();
+    int matchedJets = 0;
+    int missedJets = 0;
+    int fakeJets = 0;
 
-	IncBentPtResponse.Miss ( mcit->orig.Pt(), mcweight );
-	IncBentPtTwoSubJet_R0p1_ZResponse2D.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight );
-	IncBentPtTwoSubJet_R0p1_ThetaResponse2D.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight );
-	IncPtBentTwoSubJet_R0p1_ZResponse2D.Miss(mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight);
-	IncPtBentTwoSubJet_R0p1_ThetaResponse2D.Miss(mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight);
+    vector<MatchedResultStruct> MatchedResult;
 
-	int ptbin=-1;
-	for(int i = 0; i<npubptbins; ++i){
-	  if(mcit->orig.Pt() > pubptbins[i])
-	    ptbin = i;
-	}
+    for (vector<ResultStruct>::iterator mcit = mcresult.begin(); mcit != mcresult.end();)
+    {
+      bool matched = false;
 
-	if(ptbin!=-1){
-	  //! get the prior shift from the maximum of the ratio difference for pythia-6 between pythia-8 and herwig-7
-	  double trueshiftptwt = findweight(mcit->orig.Pt(), hJetpT_PY6_Ratio_PY8, hJetpT_PY6_Ratio_HW7);
-	  IncPriorBentPtResponse.Miss ( mcit->orig.Pt(), mcweight*trueshiftptwt);
+      for (vector<ResultStruct>::iterator ppit = ppresult.begin(); ppit != ppresult.end();)
+      {
 
-	  double priorBentTwoSubJet_R0p1_Zwt = findweight(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[ptbin], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[ptbin]);
-	  double priorBentTwoSubJet_R0p1_Thetawt = findweight(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[ptbin], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[ptbin]);
-	  IncPriorBentPtResponse.Miss ( mcit->orig.Pt(), mcweight*trueshiftptwt);
-	  IncPriorBentPtTwoSubJet_R0p1_ZResponse2D.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight*trueshiftptwt);
-	  IncPriorBentPtTwoSubJet_R0p1_ThetaResponse2D.Miss( mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight*trueshiftptwt);
-	  IncPtPriorBentTwoSubJet_R0p1_ZResponse2D.Miss(mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt);
-	  IncPtPriorBentTwoSubJet_R0p1_ThetaResponse2D.Miss(mcit->orig.Pt(), mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt);
-	  double priorBentPY8TwoSubJet_R0p1_Zwt = findweight_v2(mcit->orig.Pt(), hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[ptbin]);
-	  double priorBentPY8TwoSubJet_R0p1_Thetawt = findweight_v2(mcit->orig.Pt(), hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[ptbin]);
-	  double priorBentHW7TwoSubJet_R0p1_Zwt = findweight_v2(mcit->orig.Pt(), hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[ptbin]);
-	  double priorBentHW7TwoSubJet_R0p1_Thetawt = findweight_v2(mcit->orig.Pt(), hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[ptbin]);
-	  
-	  double priorBentTwoSubJet_R0p1_Zwt_max;   
-	  double priorBentTwoSubJet_R0p1_Thetawt_max;    
-	  double priorBentTwoSubJet_R0p1_Zwt_max_env;
-	  double priorBentTwoSubJet_R0p1_Thetawt_max_env;
-	  double priorBentTwoSubJet_R0p1_Zwt_avg;
-	  double priorBentTwoSubJet_R0p1_Thetawt_avg;
-	  
+        // Check that jets are matched, haven't been matched before and geant event meets requirements to be jet
+        if (mcit->orig.DeltaR(ppit->orig) < RCut && matched == false && ppit->orig.perp() > 10 && mcit->orig.perp() > 5)
+        {
+          SingleMatchedResolution->Fill((double)(ppit->orig.perp()) / (mcit->orig.perp()), mcweight);
+          MatchedResult.push_back(MatchedResultStruct(*mcit, *ppit));
+          ppit = ppresult.erase(ppit);
+          matched = true;
+          break;
+        }
+        else
+        {
 
-	  if(mcit->orig.Pt() > 15 && mcit->orig.Pt() < 20){
-	    IncTwoSubJet_R0p1_ZResponse1D_ptbin1.Miss( mcit->TwoSubJet_R0p1_Z, mcweight);
-	    IncTwoSubJet_R0p1_ThetaResponse1D_ptbin1.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight);
-	    IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin1.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	    IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin1.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	    IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin1.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	    IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin1.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	    priorBentTwoSubJet_R0p1_Zwt_max = findweight(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[1]);
-	    priorBentTwoSubJet_R0p1_Thetawt_max = findweight(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[1]);
-	    priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[1]);
-	    priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[1]);
-	    priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[1]);
-	    priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[1], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[1]);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin1.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin1.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin1.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin1.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin1.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin1.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);	    
-	  }
-	  if(mcit->orig.Pt() > 20 && mcit->orig.Pt() < 25){
-	    IncTwoSubJet_R0p1_ZResponse1D_ptbin2.Miss( mcit->TwoSubJet_R0p1_Z, mcweight);
-	    IncTwoSubJet_R0p1_ThetaResponse1D_ptbin2.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight);
-	    IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin2.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	    IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin2.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	    IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin2.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	    IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin2.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	    priorBentTwoSubJet_R0p1_Zwt_max = findweight(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[2]);
-	    priorBentTwoSubJet_R0p1_Thetawt_max = findweight(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[2]);
-	    priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[2]);
-	    priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[2]);
-	    priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[2]);
-	    priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[2], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[2]);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin2.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin2.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin2.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin2.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin2.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin2.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	  }
-	  if(mcit->orig.Pt() > 25 && mcit->orig.Pt() < 30){
-	    IncTwoSubJet_R0p1_ZResponse1D_ptbin3.Miss( mcit->TwoSubJet_R0p1_Z, mcweight);
-	    IncTwoSubJet_R0p1_ThetaResponse1D_ptbin3.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight);
-	    IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin3.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	    IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin3.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	    IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin3.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	    IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin3.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	    priorBentTwoSubJet_R0p1_Zwt_max = findweight(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[3]);
-	    priorBentTwoSubJet_R0p1_Thetawt_max = findweight(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[3]);
-	    priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[3]);
-	    priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[3]);
-	    priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[3]);
-	    priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[3], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[3]);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin3.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin3.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin3.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin3.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin3.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin3.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	  }
-	  if(mcit->orig.Pt() > 30 && mcit->orig.Pt() < 40){
-	    IncTwoSubJet_R0p1_ZResponse1D_ptbin4.Miss( mcit->TwoSubJet_R0p1_Z, mcweight);
-	    IncTwoSubJet_R0p1_ThetaResponse1D_ptbin4.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight);
-	    IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin4.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	    IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin4.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	    IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin4.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	    IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin4.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	    priorBentTwoSubJet_R0p1_Zwt_max = findweight(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[4]);
-	    priorBentTwoSubJet_R0p1_Thetawt_max = findweight(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[4]);
-	    priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[4]);
-	    priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[4]);
-	    priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[4]);
-	    priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[4], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[4]);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin4.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin4.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin4.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin4.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin4.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin4.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	  }
-	  if(mcit->orig.Pt() > 40 && mcit->orig.Pt() < 60){
-	    IncTwoSubJet_R0p1_ZResponse1D_ptbin5.Miss( mcit->TwoSubJet_R0p1_Z, mcweight);
-	    IncTwoSubJet_R0p1_ThetaResponse1D_ptbin5.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight);
-	    IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin5.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentPY8TwoSubJet_R0p1_Zwt);
-	    IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin5.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentPY8TwoSubJet_R0p1_Thetawt);
-	    IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin5.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentHW7TwoSubJet_R0p1_Zwt);
-	    IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin5.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentHW7TwoSubJet_R0p1_Thetawt);
-	    priorBentTwoSubJet_R0p1_Zwt_max = findweight(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[5]);
-	    priorBentTwoSubJet_R0p1_Thetawt_max = findweight(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[5]);
-	    priorBentTwoSubJet_R0p1_Zwt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[5]);
-	    priorBentTwoSubJet_R0p1_Thetawt_max_env = findweight_max(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[5]);
-	    priorBentTwoSubJet_R0p1_Zwt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Z, hJetTwoSubJet_R0p1_Z_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Z_PY6_Ratio_HW7[5]);
-	    priorBentTwoSubJet_R0p1_Thetawt_avg = findweight_avg(mcit->TwoSubJet_R0p1_Theta, hJetTwoSubJet_R0p1_Theta_PY6_Ratio_PY8[5], hJetTwoSubJet_R0p1_Theta_PY6_Ratio_HW7[5]);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin5.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin5.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin5.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_max_env);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin5.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_max_env);
-	    IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin5.Miss( mcit->TwoSubJet_R0p1_Z, mcweight*priorBentTwoSubJet_R0p1_Zwt_avg);
-	    IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin5.Miss( mcit->TwoSubJet_R0p1_Theta, mcweight*priorBentTwoSubJet_R0p1_Thetawt_avg);
-	  }
+          ++ppit;
+        }
+      }
+      if (matched)
+      {
+        if (mcit->orig.perp() > 10)
+        {
+          matchedJets++;
+        }
+        // if you find a match for a pythia jet, sort it away and remove from list
+        mcit = mcresult.erase(mcit);
+      }
+      else
+      {
+        // pythia jet has been missed
 
-	}
+        // Fill in missed jet quantities
+
+        double ptJet = mcit->orig.perp();
+        double JetMass = mcit->orig.m();
+        // Fill in missed jet quantities like mass
+
+        if (ptJet < 5)
+        {
+          mcit = mcresult.erase(mcit);
+          continue;
+        }
+        if (ptJet > 10)
+        {
+          missedJets++;
+        }
+        ++mcit;
+        // roll random number at jet level
+        // MCRandom=rand();
       }
     }
-  
-    if ( UseFakes ){
-      for ( vector<RootResultStruct>::iterator ppit = ppresult.begin(); ppit != ppresult.end(); ++ppit ){
-	IncPtResponse.Fake( ppit->orig.Pt(), ppweight );
-	IncPtTwoSubJet_R0p1_ZResponse2D.Fake( ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Z, ppweight );
-	IncPtTwoSubJet_R0p1_ThetaResponse2D.Fake( ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Theta, ppweight );
-
-	hRecoFakeJetPt->Fill(ppit->orig.Pt(), ppweight);		
-	
-	if ( !PrepClosure || mcEvi%2 == 0){	  
-	  IncPtResponse_MCClosure.Fake( ppit->orig.Pt(), ppweight );
-	  IncPtTwoSubJet_R0p1_ZResponse2D_MCClosure.Fake( ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Z, ppweight );
-	  IncPtTwoSubJet_R0p1_ThetaResponse2D_MCClosure.Fake( ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Theta, ppweight );
-	}
-	
-	IncBentPtResponse.Fake ( ppit->orig.Pt(), ppweight );
-
-	IncBentPtTwoSubJet_R0p1_ZResponse2D.Fake( ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Z, ppweight );
-	IncBentPtTwoSubJet_R0p1_ThetaResponse2D.Fake( ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Theta, ppweight );
-	IncPtBentTwoSubJet_R0p1_ZResponse2D.Fake(ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Z, ppweight);
-	IncPtBentTwoSubJet_R0p1_ThetaResponse2D.Fake(ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Theta, ppweight);
-	IncPriorBentPtResponse.Fake ( ppit->orig.Pt(), ppweight );
-	IncPriorBentPtTwoSubJet_R0p1_ZResponse2D.Fake( ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Z, ppweight );
-	IncPriorBentPtTwoSubJet_R0p1_ThetaResponse2D.Fake( ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Theta, ppweight );
-	IncPtPriorBentTwoSubJet_R0p1_ZResponse2D.Fake(ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Z, ppweight);
-	IncPtPriorBentTwoSubJet_R0p1_ThetaResponse2D.Fake(ppit->orig.Pt(), ppit->TwoSubJet_R0p1_Theta, ppweight);
-
-	
-	if(ppit->orig.Pt() > 15 && ppit->orig.Pt() < 20){
-	  IncTwoSubJet_R0p1_ZResponse1D_ptbin1.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin1.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin1.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin1.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin1.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin1.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin1.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin1.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin1.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin1.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin1.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin1.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	}
-	if(ppit->orig.Pt() > 20 && ppit->orig.Pt() < 25){
-	  IncTwoSubJet_R0p1_ZResponse1D_ptbin2.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin2.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin2.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin2.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin2.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin2.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin2.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin2.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin2.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin2.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin2.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin2.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	}
-	if(ppit->orig.Pt() > 25 && ppit->orig.Pt() < 30){
-	  IncTwoSubJet_R0p1_ZResponse1D_ptbin3.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin3.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin3.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin3.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin3.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin3.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin3.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin3.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin3.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin3.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin3.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin3.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	}
-	if(ppit->orig.Pt() > 30 && ppit->orig.Pt() < 40){
-	  IncTwoSubJet_R0p1_ZResponse1D_ptbin4.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin4.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin4.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin4.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin4.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin4.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin4.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin4.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin4.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin4.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin4.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin4.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	}
-	if(ppit->orig.Pt() > 40 && ppit->orig.Pt() < 60){
-	  IncTwoSubJet_R0p1_ZResponse1D_ptbin5.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin5.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin5.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin5.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin5.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin5.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin5.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin5.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin5.Fake( ppit->TwoSubJet_R0p1_Z, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin5.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin5.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin5.Fake( ppit->TwoSubJet_R0p1_Theta, ppweight);
-	}
-	
-      } 
+    fakeJets = ppresult.size();
+    if ((double)missedJets / (double)totalJetsmc > 0.5)
+    {
+      // cout << "miss ratio " << (double)missedJets/(double)totalJetsmc << endl;
+      // cout << (double)fakeJets/(double)totalJetspp << endl;
+      //	continue;
     }
-  
+    if ((double)fakeJets == (double)totalJetspp && missedJets == totalJetsmc)
+    {
+    }
+    TotalRate_Meas_EventNum->Fill(mcEvi, matchedJets);
+    TotalRate_True_EventNum->Fill(mcEvi, matchedJets);
+    MissRate_EventNum->Fill(mcEvi, missedJets);
+    TotalRate_True_EventNum->Fill(mcEvi, missedJets);
+
+    // Loop through leftover pp Jets and fill in as fakes
+
+    for (vector<ResultStruct>::iterator mcit = mcresult.begin(); mcit != mcresult.end();)
+    {
+
+      // Fill in overall jet quantities
+
+      double ptJet = mcit->orig.perp();
+      double JetMass = mcit->orig.m();
+      double etaJet = mcit->orig.eta();
+      double phiJet = mcit->orig.phi();
+
+      JetPt_True->Fill(ptJet, mcit->weight);
+      JetPt_JetMissed->Fill(ptJet, mcit->weight);
+      if (ptJet > 10)
+      {
+        JetEtaPhi_True->Fill(etaJet, phiJet, mcit->weight);
+        JetEtaPhi_JetMissed->Fill(etaJet, phiJet, mcit->weight);
+      }
+      // Fill in missed jet quantities like mass
+
+      // roll random number at jet level
+      // MCRandom=rand();
+
+      NConstituentsmc->Fill(ptJet, mcit->E.size(), mcit->weight);
+
+      // Loop over constituents and fill in
+
+      for (unsigned i = 0; i < mcit->E.size(); ++i)
+      {
+        ConstituentpTmc->Fill(ptJet, mcit->pt[i], mcit->weight);
+        if (mcit->pt[i] < ConMinPt)
+        {
+          continue;
+        }
+        for (unsigned j = i + 1; j < mcit->E.size(); ++j)
+        {
+          if (mcit->pt[j] < ConMinPt)
+          {
+            continue;
+          }
+          // calculate distance
+          double deltaPhiMiss = (double)abs(mcit->phi[i] - mcit->phi[j]);
+          if (deltaPhiMiss > M_PI)
+          {
+            deltaPhiMiss = deltaPhiMiss - (2 * M_PI);
+          }
+          double deltaEtaMiss = (double)mcit->eta[i] - mcit->eta[j];
+          double deltaRMiss = sqrt(pow(deltaPhiMiss, 2) + pow(deltaEtaMiss, 2));
+
+          double ptJet2 = pow(ptJet, 2);
+
+          if (ptJet > TruthJetBounds[0] && ptJet < TruthJetBounds[TruthJetBins])
+          {
+
+            EventWeightMiss = (mcit->weight);
+            JetPtMiss = (mcit->pT);
+            ZgMiss = (mcit->zg);
+            kTMiss = (mcit->kT);
+            RgMiss = (mcit->rg);
+            MuMiss = (mcit->mu);
+            DeltaRMiss = (log(deltaRMiss));
+
+            // roll random number at correlation level
+            //  MCRandom=rand();
+
+            // Sort into samples
+            if ((MCRandom % 2) == 0)
+            {
+              ++RandomA;
+              SampleMiss = (1);
+            }
+            else
+            {
+              ++RandomB;
+              SampleMiss = (2);
+            }
+
+            // double chargeCheckFake=ppit->charge[i]*ppit->charge[j];
+
+            /*if(chargeCheckFake>0){
+
+        ChargeSampleFake=1;
+
+            }
+
+            if(chargeCheckFake<0){
+
+        ChargeSampleFake=2;
+            }
+
+            ChargeSampleCounts->Fill(ChargeSampleFake);*/
+
+            TriggerMissed = 2;
+            MissTree->Fill();
+            MissNumber++;
+          }
+        }
+      }
+      mcit = mcresult.erase(mcit);
+    }
+    for (vector<ResultStruct>::iterator ppit = ppresult.begin(); ppit != ppresult.end();)
+    {
+
+      // Fill in overall jet quantities
+      double ptJet = ppit->orig.perp();
+      if (ptJet < 10 || ptJet > MeasJetBounds[MeasJetBins])
+      {
+        ppit = ppresult.erase(ppit);
+        continue;
+      }
+      double etaJet = ppit->orig.eta();
+      double phiJet = ppit->orig.phi();
+      double chargedpT = 0;
+      JetPt_Meas->Fill(ptJet, ppweight);
+      JetPt_Fake_Jet->Fill(ptJet, ppweight);
+      JetEtaPhi_Meas->Fill(etaJet, phiJet, ppweight);
+      JetEtaPhi_Fake_Jet->Fill(etaJet, phiJet, ppweight);
+
+      NConstituentspp->Fill(ptJet, ppit->E.size(), ppit->weight);
+      double ptJet2 = pow(ptJet, 2);
+
+      TotalRate_Meas_EventNum->Fill(mcEvi);
+      FakeRate_EventNum->Fill(mcEvi);
+
+      // Loop over constituents and fill in
+
+      for (unsigned i = 0; i < ppit->E.size(); ++i)
+      {
+        if (ppweight != ppit->weight)
+        {
+          cout << "err" << endl;
+        }
+        ConstituentpTpp->Fill(ptJet, ppit->pt[i], ppweight);
+        if (ppit->pt[i] < ConMinPt)
+        {
+          continue;
+        }
+        for (unsigned j = i + 1; j < ppit->E.size(); ++j)
+        {
+          if (ppit->pt[j] < ConMinPt)
+          {
+            continue;
+          }
+
+          double deltaPhiFake = (double)abs(ppit->phi[i] - ppit->phi[j]);
+          if (deltaPhiFake > M_PI)
+          {
+
+            deltaPhiFake = deltaPhiFake - (2 * M_PI);
+          }
+          double deltaEtaFake = (double)ppit->eta[i] - ppit->eta[j];
+          double deltaRFake = sqrt(pow(deltaPhiFake, 2) + pow(deltaEtaFake, 2));
+
+          EventWeightFake = (ppit->weight);
+          JetPtFake = (ppit->pT);
+          ZgFake = (ppit->zg);
+          kTFake = (ppit->kT);
+          RgFake = (ppit->rg);
+          MuFake = (ppit->mu);
+          DeltaRFake = (log(deltaRFake));
+
+          // Sort into samples
+          if ((MCRandom % 2) == 0)
+          {
+            ++RandomA;
+            SampleFake = (1);
+          }
+          else
+          {
+            ++RandomB;
+            SampleFake = (2);
+          }
+
+          // don't think I should be doing this, change later
+
+          TriggerFake = 2;
+          FakeTree->Fill();
+          FakeNumber++;
+        }
+      }
+      // if(chargedpT/JetPtFake > 1){cout << "something up on fake level" << endl;}
+      ppit = ppresult.erase(ppit);
+    }
+    ppresult.clear();
+    mcresult.clear();
+
+    // Fill Matches
+
+    for (vector<MatchedResultStruct>::iterator res = MatchedResult.begin(); res != MatchedResult.end(); ++res)
+    {
+
+      ResultStruct mc = res->first;
+      ResultStruct pp = res->second;
+
+      // Fill in Matched Jets
+      double ptJetmc = mc.orig.perp();
+      double ptJetpp = pp.orig.perp();
+      double etaJetmc = mc.orig.eta();
+      double etaJetpp = pp.orig.eta();
+      double phiJetmc = mc.orig.phi();
+      double phiJetpp = pp.orig.phi();
+
+      NConstituentsmc->Fill(ptJetmc, mc.E.size(), mc.weight);
+      NConstituentspp->Fill(ptJetpp, pp.E.size(), pp.weight);
+
+      JetPt_Meas->Fill(ptJetpp, pp.weight);
+      JetPt_True->Fill(ptJetmc, mc.weight);
+      if (pp.orig.perp() > 10)
+      {
+        JetEtaPhi_Meas->Fill(etaJetpp, phiJetpp, pp.weight);
+        JetEtaPhi_True->Fill(etaJetmc, phiJetmc, mc.weight);
+      }
+      JetPt_Match->Fill(ptJetpp, ptJetmc, mc.weight);
+
+      double ptJetmc2 = pow(ptJetmc, 2);
+      double ptJetpp2 = pow(ptJetpp, 2);
+      // define vectors to help sort matches
+      vector<int> mcMatchIndex;
+      vector<int> ppMatchIndex;
+      vector<int> mcMissIndex;
+      vector<int> ppFakeIndex;
+
+      // now begin constituent matching procedure
+
+      for (unsigned iCont = 0; iCont < mc.E.size(); ++iCont)
+      {
+        ConstituentpTmc->Fill(ptJetmc, mc.pt[iCont], mcweight);
+        if (mc.pt[iCont] < ConMinPt)
+        {
+          continue;
+        }
+
+        int matched = 0;
+        double percentMatch = 0.4;
+        double matchIndex = -1;
+
+        for (unsigned jCont = 0; jCont < pp.E.size(); ++jCont)
+        {
+          if (pp.pt[jCont] < ConMinPt)
+          {
+            continue;
+          }
+          double percentDifference = abs((mc.pt[iCont] - pp.pt[jCont]) / mc.pt[iCont]);
+          double deltaPhi = (double)abs(pp.phi[jCont] - mc.phi[iCont]);
+
+          if (deltaPhi > M_PI)
+          {
+            deltaPhi = deltaPhi - (2 * M_PI);
+          }
+          if (deltaPhi < -3.14)
+          {
+            cout << deltaPhi << endl;
+          }
+          double deltaEta = (double)pp.eta[jCont] - mc.eta[iCont];
+          double deltaR = sqrt(pow(deltaPhi, 2) + pow(deltaEta, 2));
+
+          // check if geant-level Constituent has already been matched
+          // will Double count if this is not here
+          int contains = 0;
+
+          for (unsigned check = 0; check < ppMatchIndex.size(); ++check)
+          {
+            if (ppMatchIndex[check] == jCont)
+            {
+              contains = 1;
+            }
+          }
+
+          if (contains == 1)
+          {
+            continue;
+          }
+
+          // Match if within radius
+          if (deltaR < 0.01)
+          {
+
+            // check that this match is better than previous match, if no previous match set to be within 50% of jet momentum
+            if (percentDifference < percentMatch)
+            {
+              // mark that at least one viable match candidate has been found and store its index
+              matched = 1;
+              percentMatch = percentDifference;
+              matchIndex = jCont;
+            }
+          }
+        }
+
+        // end of pp loop, decide what happens to mc particle now
+        // if matched, store it with its most recent match
+        if (matched == 1)
+        {
+          mcMatchIndex.push_back(iCont);
+          ppMatchIndex.push_back(matchIndex);
+        }
+
+        // if not matched, store it as a miss
+        if (matched == 0)
+        {
+          mcMissIndex.push_back(iCont);
+        }
+      }
+      /*double percentDifference=abs((mc.pt[iCont]-pp.pt[jCont])/mc.pt[iCont]);
+      double deltaPhi= (double)pp.phi[jCont]-mc.phi[iCont];
+
+      if(deltaPhi>M_PI){
+
+        deltaPhi=deltaPhi-(2*M_PI);
+      }
+      double deltaEta=(double)pp.eta[jCont]-mc.eta[iCont];
+      double deltaR=sqrt(pow(deltaPhi,2)+pow(deltaEta,2));*/
+      // check if jConstituent has already been matched
+      // WILL Double count if this is not here, showing that there can be multiple consituents within same delta R, what does this mean?
+
+      for (unsigned kCont = 0; kCont < pp.E.size(); ++kCont)
+      {
+        if (pp.pt[kCont] < ConMinPt)
+        {
+          continue;
+        }
+        int matched = 0;
+        for (unsigned check = 0; check < ppMatchIndex.size(); ++check)
+        {
+          if (ppMatchIndex[check] == kCont)
+          {
+            matched = 1;
+          }
+        }
+        if (matched == 0)
+        {
+          ppFakeIndex.push_back(kCont);
+        }
+      }
+
+      // cout << "Number of matched particles is: " << ppMatchIndex.size() << " and fakes: " << ppFakeIndex.size() << "with total of " << pp.E.size() << endl;
+      // Now feed in all of the Fake Correlators
+
+      for (unsigned i = 0; i < ppFakeIndex.size(); ++i)
+      {
+        // fakes with matches
+        for (unsigned j = 0; j < ppMatchIndex.size(); ++j)
+        {
+          double deltaPhiFake = (double)abs(pp.phi[ppFakeIndex[i]] - pp.phi[ppMatchIndex[j]]);
+          if (deltaPhiFake > M_PI)
+          {
+            deltaPhiFake = deltaPhiFake - (2 * M_PI);
+          }
+          double deltaEtaFake = (double)pp.eta[ppFakeIndex[i]] - pp.eta[ppMatchIndex[j]];
+          double deltaRFake = sqrt(pow(deltaPhiFake, 2) + pow(deltaEtaFake, 2));
+
+          if (ptJetpp < TruthJetBounds[TruthJetBins] && ptJetpp > 10)
+          {
+
+            EventWeightFake = (pp.weight);
+            JetPtFake = (ptJetpp);
+            ZgFake = (Zgpp);
+            kTFake = (kTpp);
+            RgFake = (Rgpp);
+            MuFake = (Mupp);
+            DeltaRFake = (log(deltaRFake));
+
+            // Sort into samples
+            if ((MCRandom % 2) == 0)
+            {
+              ++RandomA;
+              SampleFake = (1);
+            }
+            else
+            {
+              ++RandomB;
+              SampleFake = (2);
+            }
+
+            TriggerFake = -1;
+            FakeTree->Fill();
+            FakeNumber++;
+          }
+        }
+
+        // fakes with fakes
+        for (unsigned j = i + 1; j < ppFakeIndex.size(); ++j)
+        {
+          double deltaPhiFake = (double)abs(pp.phi[ppFakeIndex[i]] - pp.phi[ppFakeIndex[j]]);
+          if (deltaPhiFake > M_PI)
+          {
+
+            deltaPhiFake = deltaPhiFake - (2 * M_PI);
+          }
+
+          double deltaEtaFake = (double)pp.eta[ppFakeIndex[i]] - pp.eta[ppFakeIndex[j]];
+
+          double deltaRFake = sqrt(pow(deltaPhiFake, 2) + pow(deltaEtaFake, 2));
+
+          if (ptJetpp < TruthJetBounds[TruthJetBins] && ptJetpp > 10)
+          {
+            EventWeightFake = (pp.weight);
+            JetPtFake = (ptJetpp);
+            ZgFake = (Zgpp);
+            kTFake = (kTpp);
+            RgFake = (Rgpp);
+            MuFake = (Mupp);
+            DeltaRFake = (log(deltaRFake));
+
+            // Sort into samples
+            if ((MCRandom % 2) == 0)
+            {
+              ++RandomA;
+              SampleFake = (1);
+            }
+            else
+            {
+              ++RandomB;
+              SampleFake = (2);
+            }
+
+            // don't think I should be doing this, change later
+
+            TriggerFake = 0;
+            FakeTree->Fill();
+            FakeNumber++;
+          }
+        }
+      }
+
+      // Fill in Missed Correlators
+
+      for (unsigned i = 0; i < mcMissIndex.size(); ++i)
+      {
+        // misses with matches
+        for (unsigned j = 0; j < mcMatchIndex.size(); ++j)
+        {
+          double deltaPhiMiss = (double)abs(mc.phi[mcMissIndex[i]] - mc.phi[mcMatchIndex[j]]);
+
+          if (deltaPhiMiss > M_PI)
+          {
+
+            deltaPhiMiss = deltaPhiMiss - (2 * M_PI);
+          }
+          double deltaEtaMiss = (double)mc.eta[mcMissIndex[i]] - mc.eta[mcMatchIndex[j]];
+
+          double deltaRMiss = sqrt(pow(deltaPhiMiss, 2) + pow(deltaEtaMiss, 2));
+
+          double JetPtMeas = pp.orig.perp();
+
+          // check weighting, will remove
+          // EECWeightMiss=1;
+          // ptJetmc2=1;
+
+          if (ptJetmc > TruthJetBounds[0] && ptJetmc < TruthJetBounds[TruthJetBins])
+          {
+
+            EventWeightMiss = (mc.weight);
+            JetPtMiss = (mc.pT);
+            ZgMiss = (mc.zg);
+            kTMiss = (mc.kT);
+            RgMiss = (mc.rg);
+            MuMiss = (mc.mu);
+            DeltaRMiss = (log(deltaRMiss));
+
+            // roll random number at correlation level
+            // MCRandom=rand();
+
+            // Sort into samples
+            if ((MCRandom % 2) == 0)
+            {
+              ++RandomA;
+              SampleMiss = (1);
+            }
+            else
+            {
+              ++RandomB;
+              SampleMiss = (2);
+            }
+
+            TriggerMissed = 0;
+            MissTree->Fill();
+            MissNumber++;
+          }
+        }
+        // misses with misses
+
+        for (unsigned j = i + 1; j < mcMissIndex.size(); ++j)
+        {
+          double deltaPhiMiss = (double)abs(mc.phi[mcMissIndex[i]] - mc.phi[mcMissIndex[j]]);
+
+          if (deltaPhiMiss > M_PI)
+          {
+
+            deltaPhiMiss = deltaPhiMiss - (2 * M_PI);
+          }
+
+          double deltaEtaMiss = (double)mc.eta[mcMissIndex[i]] - mc.eta[mcMissIndex[j]];
+          double_t deltaRMiss = sqrt(pow(deltaPhiMiss, 2) + pow(deltaEtaMiss, 2));
+
+          double JetPtMeas = pp.orig.perp();
+
+          if (ptJetmc > TruthJetBounds[0] && ptJetmc < TruthJetBounds[TruthJetBins])
+          {
+
+            EventWeightMiss = (mc.weight);
+            JetPtMiss = (mc.pT);
+            ZgMiss = (mc.zg);
+            kTMiss = (mc.kT);
+            RgMiss = (mc.rg);
+            MuMiss = (mc.mu);
+            DeltaRMiss = (log(deltaRMiss));
+
+            // roll random number at correlation level
+            // MCRandom=rand();
+
+            // Sort into samples
+            if ((MCRandom % 2) == 0)
+            {
+              ++RandomA;
+              SampleMiss = (1);
+            }
+            else
+            {
+              ++RandomB;
+              SampleMiss = (2);
+            }
+
+            TriggerMissed = 0;
+            MissTree->Fill();
+            MissNumber++;
+          }
+        }
+      }
+
+      // roll random number at correlation level
+      // MCRandom=rand();
+
+      // Sort into samples
+
+      // Fill in mc Matches
+
+      for (unsigned i = 0; i < mcMatchIndex.size(); ++i)
+      {
+
+        Match_DeltaPhi->Fill(mc.phi[mcMatchIndex[i]], pp.phi[ppMatchIndex[i]]);
+        Match_DeltaEta->Fill(mc.eta[mcMatchIndex[i]], pp.eta[ppMatchIndex[i]]);
+
+        double deltaPhiMatchmcvspp = (double)abs(mc.phi[mcMatchIndex[i]] - pp.phi[ppMatchIndex[i]]);
+        if (deltaPhiMatchmcvspp > M_PI)
+        {
+          deltaPhiMatchmcvspp = deltaPhiMatchmcvspp - (2 * M_PI);
+        }
+        double deltaEtaMatchmcvspp = (double)mc.eta[mcMatchIndex[i]] - pp.eta[ppMatchIndex[i]];
+        double deltaRMatchmcvspp = sqrt(pow(deltaPhiMatchmcvspp, 2) + pow(deltaEtaMatchmcvspp, 2));
+        MatchDistance->Fill(deltaRMatchmcvspp);
+
+        for (unsigned j = i + 1; j < mcMatchIndex.size(); ++j)
+        {
+
+          // mcEEC
+          double deltaPhiMatchmc = (double)abs(mc.phi[mcMatchIndex[i]] - mc.phi[mcMatchIndex[j]]);
+          if (deltaPhiMatchmc > M_PI)
+          {
+
+            deltaPhiMatchmc = deltaPhiMatchmc - (2 * M_PI);
+          }
+          double deltaEtaMatchmc = (double)mc.eta[mcMatchIndex[i]] - mc.eta[mcMatchIndex[j]];
+          double deltaRMatchmc = sqrt(pow(deltaPhiMatchmc, 2) + pow(deltaEtaMatchmc, 2));
+
+          // ppEEC
+          double deltaPhiMatchpp = (double)abs(pp.phi[ppMatchIndex[i]] - pp.phi[ppMatchIndex[j]]);
+          if (deltaPhiMatchpp > M_PI)
+          {
+
+            deltaPhiMatchpp = deltaPhiMatchpp - (2 * M_PI);
+          }
+          double deltaEtaMatchpp = (double)pp.eta[ppMatchIndex[i]] - pp.eta[ppMatchIndex[j]];
+          double deltaRMatchpp = sqrt(pow(deltaPhiMatchpp, 2) + pow(deltaEtaMatchpp, 2));
+
+          if (ptJetmc > 5 && deltaRMatchpp < (RCut * 2) && ptJetpp < TruthJetBounds[TruthJetBins] && ptJetmc < TruthJetBounds[TruthJetBins])
+          {
+
+            EventWeightmc = (mc.weight);
+            EventWeightpp = (pp.weight);
+            JetPtpp = (ptJetpp);
+            JetPtmc = (ptJetmc);
+
+            DeltaRmc = (log(deltaRMatchmc));
+            DeltaRpp = (log(deltaRMatchpp));
+            Zgmc = (mc.zg);
+            Zgpp = (pp.zg);
+            Rgmc = (mc.rg);
+            Rgpp = (pp.rg);
+            Mumc = (mc.mu);
+            Mupp = (pp.mu);
+            kTmc = (mc.kT);
+            kTpp = (pp.kT);
+
+            // Sort into samples
+            if ((MCRandom % 2) == 0)
+            {
+              ++RandomA;
+              SampleMatch = (1);
+            }
+            else
+            {
+              ++RandomB;
+              SampleMatch = (2);
+            }
+
+            // Sort into charge sample
+
+            // Sort into charge sample
+
+            /*double chargeCheckMatch =mc.charge[mcMatchIndex[i]]*mc.charge[mcMatchIndex[j]];
+
+            if(chargeCheckMatch>0){
+
+        ChargeSampleMatch=1;
+        Match_DeltaDeltaR_LikeCharge->Fill(deltaRMatchmc,(deltaRMatchmc-deltaRMatchpp));
+
+            }
+
+            if(chargeCheckMatch<0){
+
+        ChargeSampleMatch=2;
+        Match_DeltaDeltaR_OppCharge->Fill(deltaRMatchmc,(deltaRMatchmc-deltaRMatchpp));
+            }*/
+
+            MatchTree->Fill();
+            MatchNumber++;
+          }
+        }
+      }
+
+      NMissed->Fill(ptJetmc, mcMissIndex.size(), EventWeightmc);
+      NFake->Fill(ptJetpp, ppFakeIndex.size(), EventWeightpp);
+      NMatched->Fill(ptJetmc, mcMatchIndex.size(), EventWeightmc);
+
+      if (mcMatchIndex.size() != ppMatchIndex.size())
+      {
+        cout << "matching error!" << endl;
+      }
+
+      ppFakeIndex.clear();
+      mcMatchIndex.clear();
+      ppMatchIndex.clear();
+      mcMissIndex.clear();
+    }
+    MatchedResult.clear();
+    // end of matched loop
+  }
+  // end of mc loop
+  int FakeEvents = 0;
+
+  sort(GeantEntries.begin(), GeantEntries.end());
+  Long64_t GSize = GeantEntries.size();
+  for (Long64_t ppCheck = 0; ppCheck < GSize - 1; ++ppCheck)
+  {
+    if (!(ppCheck % 10000))
+    {
+      cout << "Checking fake events: " << 100 * (double)ppCheck / (double)GSize << " percent done" << endl;
+    }
+    // cout << "Entry " << GeantEntries[ppCheck] << endl;
+    if (GeantEntries[ppCheck] == GeantEntries[ppCheck + 1] - 1)
+    {
+      continue;
+    }
+    // if(trimming == 1){continue;}
+    for (Long64_t ppEvi = GeantEntries[ppCheck] + 1; ppEvi < GeantEntries[ppCheck + 1]; ++ppEvi)
+    {
+      // cout << "In between " << GeantEntries[ppCheck+1]
+      // cout << endl << "Got something here Event No: " << GeantEntries[ppEvi] << endl;
+
+      // cout << "checking geant event " << ppEvi << " / " << M << " for fake jets " << endl;
+      FakeEvents++;
+
+      // reroll random sample sorting
+      MCRandom = rand();
+
+      // Fill in Geant Event as fake
+      PpChain->GetEntry(ppEvi);
+      // store jets
+      vector<ResultStruct> ppresult;
+      bool TruthInAcceptance = false;
+      for (int j = 0; j < ppnjets; ++j)
+      {
+        TStarJetVectorJet *ppjet = (TStarJetVectorJet *)PpJets->At(j);
+        vector<double> ppE_Jet = ppE_Vec->at(j);
+        vector<double> pppt_Jet = pppt_Vec->at(j);
+        vector<double> ppphi_Jet = ppphi_Vec->at(j);
+        vector<double> ppeta_Jet = ppeta_Vec->at(j);
+        double ppZg = zg->at(j);
+        double ppRg = rg->at(j);
+        double ppPT = pT->at(j);
+        double ppE1 = E->at(j);
+        double ppKT = kT->at(j);
+        double ppTf = tf->at(j);
+        double ppMu = mu->at(j);
+
+        //! Ok, record
+        if (fabs(ppjet->Eta()) < EtaCut)
+        {
+          ppresult.push_back(ResultStruct(*ppjet, ppZg, ppRg, ppPT, ppKT, ppTf, ppMu, ppE_Jet, pppt_Jet, ppphi_Jet, ppeta_Jet, ppweight));
+          TruthInAcceptance = true;
+        }
+      }
+      if (!TruthInAcceptance)
+      {
+        continue;
+      }
+
+      // Figure out what ptHard bin the event is from, and throw it away if a jet was produced more than twice the highest ptHard - will cut out events that have been weighted too highly.
+      int isBad = 0;
+      int weightBin = -1;
+      for (unsigned i = 0; i < vptbins.size(); ++i)
+      {
+        if (ppweight == XSEC[i] / NUMBEROFEVENT[i])
+        {
+          weightBin = i;
+        }
+      }
+      for (vector<ResultStruct>::iterator ppit = ppresult.begin(); ppit != ppresult.end(); ++ppit)
+      {
+        double Jetpt = ppit->orig.perp();
+        double Jetpt2 = pow(Jetpt, 2);
+
+        if (Jetpt > MAXPT[weightBin])
+        {
+          isBad = 1;
+        }
+      }
+      if (isBad == 1)
+      {
+        cout << "bad fake event " << endl;
+        continue;
+      }
+      TotalGeantEventNumber++;
+
+      for (vector<ResultStruct>::iterator ppit = ppresult.begin(); ppit != ppresult.end();)
+      {
+
+        double Jetpt = ppit->orig.perp();
+        // Only looking at jets in these ranges
+        if (Jetpt > 10)
+        {
+          double Jeteta = ppit->orig.eta();
+          double Jetphi = ppit->orig.phi();
+          JetEtaPhi_Meas->Fill(Jeteta, Jetphi, ppweight);
+          JetEtaPhi_Fake_Event->Fill(Jeteta, Jetphi, ppweight);
+
+          if (ppweight != ppit->weight)
+          {
+            cout << "something's up " << endl;
+          }
+          JetPt_Meas->Fill(Jetpt, ppweight);
+          JetPt_Fake_Event->Fill(Jetpt, ppweight);
+
+          NConstituentspp->Fill(Jetpt, ppit->E.size(), ppit->weight);
+
+          // cout << "good jet found " << endl;
+
+          double JetMass = ppit->orig.m();
+
+          // Fill in substructure variables such as EEC for entire fake jet
+          for (unsigned i = 0; i < ppit->E.size(); ++i)
+          {
+            ConstituentpTpp->Fill(Jetpt, ppit->pt[i], ppweight);
+            if (ppit->pt[i] < ConMinPt)
+            {
+              continue;
+            }
+            // Fill in fake constituents
+            for (unsigned j = i + 1; j < ppit->E.size(); ++j)
+            {
+              if (ppit->pt[j] < ConMinPt)
+              {
+                continue;
+              }
+              double deltaPhiFake = (double)abs(ppit->phi[i] - ppit->phi[j]);
+              if (deltaPhiFake > M_PI)
+              {
+                deltaPhiFake = deltaPhiFake - (2 * M_PI);
+              }
+              double deltaEtaFake = (double)ppit->eta[i] - ppit->eta[j];
+              double deltaRFake = sqrt(pow(deltaPhiFake, 2) + pow(deltaEtaFake, 2));
+
+              double Jetpt2 = pow(Jetpt, 2);
+
+              // check that you're filling in within bounds
+              if (Jetpt > 10 && Jetpt < TruthJetBounds[TruthJetBins])
+              {
+
+                EventWeightFake = (ppit->weight);
+                JetPtFake = (Jetpt);
+                DeltaRFake = (log(deltaRFake));
+                ZgFake = (ppit->zg);
+                kTFake = (ppit->kT);
+                RgFake = (ppit->rg);
+                MuFake = (ppit->mu);
+
+                // sort into samples
+                if ((MCRandom % 2) == 0)
+                {
+                  ++RandomA;
+                  SampleFake = (1);
+                }
+                else
+                {
+                  ++RandomB;
+                  SampleFake = (2);
+                }
+
+                TriggerFake = 1;
+                FakeTree->Fill();
+
+                FakeEventNumber++;
+              }
+              // end of filling in
+            }
+          }
+        }
+        ppit = ppresult.erase(ppit);
+      }
+      continue;
+    }
   }
 
-  cout << "Misssed " << missed << endl;
+  // GeantPt->Draw("p E1");
 
-  //! Done
+  cout << "Sample 1 " << RandomA << endl;
+  cout << "Sample 2 " << RandomB << endl;
 
   fout->Write();
-  IncPtResponse.SetName("IncPtResponse");
-  IncPtResponse.Write();
 
-  IncPtTwoSubJet_R0p1_ZResponse2D.SetName("IncPtTwoSubJet_R0p1_ZResponse2D");
-  IncPtTwoSubJet_R0p1_ZResponse2D.Write();
+  auto deltadeltaRPlot = new TCanvas;
 
-  IncPtTwoSubJet_R0p1_ThetaResponse2D.SetName("IncPtTwoSubJet_R0p1_ThetaResponse2D");
-  IncPtTwoSubJet_R0p1_ThetaResponse2D.Write();
-  
-  IncPtResponse_MCClosure.SetName("IncPtResponse_MCClosure");
-  IncPtResponse_MCClosure.Write();
+  FakeRate_EventNum->Divide(TotalRate_Meas_EventNum);
+  FakeRate_EventNum->Draw("p E1");
 
-  IncPtTwoSubJet_R0p1_ZResponse2D_MCClosure.SetName("IncPtTwoSubJet_R0p1_ZResponse2D_MCClosure");
-  IncPtTwoSubJet_R0p1_ZResponse2D_MCClosure.Write();
+  auto deltadeltaRPlot2 = new TCanvas("MissC", "MissC");
 
-  IncPtTwoSubJet_R0p1_ThetaResponse2D_MCClosure.SetName("IncPtTwoSubJet_R0p1_ThetaResponse2D_MCClosure");
-  IncPtTwoSubJet_R0p1_ThetaResponse2D_MCClosure.Write();
+  MissRate_EventNum->Divide(TotalRate_True_EventNum);
+  MissRate_EventNum->Draw("p E1");
 
-  
-  IncBentPtResponse.SetName("IncBentPtResponse");
-  IncBentPtResponse.Write();
+  auto ReweightedDist = new TCanvas("ReweightedDist", "ReweightedDist");
 
-  IncPriorBentPtResponse.SetName("IncPriorBentPtResponse");
-  IncPriorBentPtResponse.Write();  
+  // Match_DeltaDeltaR->Draw("colz");
 
-
-  //! two subjet histos
-  IncBentPtTwoSubJet_R0p1_ZResponse2D.SetName("IncBentPtTwoSubJet_R0p1_ZResponse2D");
-  IncBentPtTwoSubJet_R0p1_ZResponse2D.Write();
-
-  IncBentPtTwoSubJet_R0p1_ThetaResponse2D.SetName("IncBentPtTwoSubJet_R0p1_ThetaResponse2D");
-  IncBentPtTwoSubJet_R0p1_ThetaResponse2D.Write();
-  
-  IncPtBentTwoSubJet_R0p1_ZResponse2D.SetName("IncPtBentTwoSubJet_R0p1_ZResponse2D");
-  IncPtBentTwoSubJet_R0p1_ZResponse2D.Write();
-
-  IncPtBentTwoSubJet_R0p1_ThetaResponse2D.SetName("IncPtBentTwoSubJet_R0p1_ThetaResponse2D");
-  IncPtBentTwoSubJet_R0p1_ThetaResponse2D.Write();
-
-  IncPriorBentPtTwoSubJet_R0p1_ZResponse2D.SetName("IncPriorBentPtTwoSubJet_R0p1_ZResponse2D");
-  IncPriorBentPtTwoSubJet_R0p1_ZResponse2D.Write();
-
-  IncPriorBentPtTwoSubJet_R0p1_ThetaResponse2D.SetName("IncPriorBentPtTwoSubJet_R0p1_ThetaResponse2D");
-  IncPriorBentPtTwoSubJet_R0p1_ThetaResponse2D.Write();
-  
-  IncPtPriorBentTwoSubJet_R0p1_ZResponse2D.SetName("IncPtPriorBentTwoSubJet_R0p1_ZResponse2D");
-  IncPtPriorBentTwoSubJet_R0p1_ZResponse2D.Write();
-
-  IncPtPriorBentTwoSubJet_R0p1_ThetaResponse2D.SetName("IncPtPriorBentTwoSubJet_R0p1_ThetaResponse2D");
-  IncPtPriorBentTwoSubJet_R0p1_ThetaResponse2D.Write();
-
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin1.SetName("IncTwoSubJet_R0p1_ZResponse1D_ptbin1");
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin1.Write();
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin1.SetName("IncTwoSubJet_R0p1_ThetaResponse1D_ptbin1");
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin1.Write();
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin2.SetName("IncTwoSubJet_R0p1_ZResponse1D_ptbin2");
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin2.Write();
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin2.SetName("IncTwoSubJet_R0p1_ThetaResponse1D_ptbin2");
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin2.Write();
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin3.SetName("IncTwoSubJet_R0p1_ZResponse1D_ptbin3");
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin3.Write();
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin3.SetName("IncTwoSubJet_R0p1_ThetaResponse1D_ptbin3");
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin3.Write();
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin4.SetName("IncTwoSubJet_R0p1_ZResponse1D_ptbin4");
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin4.Write();
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin4.SetName("IncTwoSubJet_R0p1_ThetaResponse1D_ptbin4");
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin4.Write();
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin5.SetName("IncTwoSubJet_R0p1_ZResponse1D_ptbin5");
-  IncTwoSubJet_R0p1_ZResponse1D_ptbin5.Write();
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin5.SetName("IncTwoSubJet_R0p1_ThetaResponse1D_ptbin5");
-  IncTwoSubJet_R0p1_ThetaResponse1D_ptbin5.Write();
-
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin1.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin1");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin1.Write();
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin1.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin1");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin1.Write();
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin1.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin1");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin1.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin1.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin1");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin1.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin1.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin1");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin1.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin1.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin1");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin1.Write();
-
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin2.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin2");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin2.Write();
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin2.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin2");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin2.Write();
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin2.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin2");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin2.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin2.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin2");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin2.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin2.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin2");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin2.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin2.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin2");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin2.Write();
-
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin3.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin3");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin3.Write();
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin3.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin3");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin3.Write();
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin3.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin3");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin3.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin3.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin3");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin3.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin3.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin3");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin3.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin3.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin3");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin3.Write();
-
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin4.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin4");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin4.Write();
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin4.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin4");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin4.Write();
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin4.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin4");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin4.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin4.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin4");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin4.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin4.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin4");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin4.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin4.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin4");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin4.Write();
-
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin5.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin5");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_ptbin5.Write();
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin5.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin5");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_max_env_ptbin5.Write();
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin5.SetName("IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin5");
-  IncPriorBentTwoSubJet_R0p1_ZResponse1D_avg_ptbin5.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin5.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin5");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_ptbin5.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin5.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin5");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_max_env_ptbin5.Write();
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin5.SetName("IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin5");
-  IncPriorBentTwoSubJet_R0p1_ThetaResponse1D_avg_ptbin5.Write();
-  
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin1.SetName("IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin1");
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin1.Write();
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin1.SetName("IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin1");
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin1.Write();
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin2.SetName("IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin2");
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin2.Write();
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin2.SetName("IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin2");
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin2.Write();
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin3.SetName("IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin3");
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin3.Write();
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin3.SetName("IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin3");
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin3.Write();
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin4.SetName("IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin4");
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin4.Write();
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin4.SetName("IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin4");
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin4.Write();
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin5.SetName("IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin5");
-  IncPriorBentPY8TwoSubJet_R0p1_ZResponse1D_ptbin5.Write();
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin5.SetName("IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin5");
-  IncPriorBentPY8TwoSubJet_R0p1_ThetaResponse1D_ptbin5.Write();
-
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin1.SetName("IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin1");
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin1.Write();
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin1.SetName("IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin1");
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin1.Write();
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin2.SetName("IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin2");
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin2.Write();
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin2.SetName("IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin2");
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin2.Write();
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin3.SetName("IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin3");
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin3.Write();
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin3.SetName("IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin3");
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin3.Write();
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin4.SetName("IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin4");
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin4.Write();
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin4.SetName("IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin4");
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin4.Write();
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin5.SetName("IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin5");
-  IncPriorBentHW7TwoSubJet_R0p1_ZResponse1D_ptbin5.Write();
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin5.SetName("IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin5");
-  IncPriorBentHW7TwoSubJet_R0p1_ThetaResponse1D_ptbin5.Write();
-  
-
-  cout << " Wrote to" << endl << OutFileName << endl;
+  cout << "Miss Number is " << MissNumber << endl;
+  cout << "From Missed Events is " << MissEventNumber << endl;
+  cout << "Fake Number is " << FakeNumber << endl;
+  cout << "From Fake Events is " << FakeEventNumber << endl;
+  cout << "MatchNumber is " << MatchNumber << endl;
 
   return 0;
-
 }
-
-
+// end of function
