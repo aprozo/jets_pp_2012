@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<job name="matching_mc_reco_" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false">
+
+    <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/trees_mc.list" nFiles="all" />
+
+    <command>
+        @ nFile=0
+        while ( $nFile &lt; $INPUTFILECOUNT )
+        eval set filename = '$INPUTFILE'$nFile 
+        # put your script here, with filename as input file
+        echo $filename
+        echo "starting singularity"
+        singularity exec -e -B $SCRATCH -B /gpfs01 star_star.simg bash container_matching_mc_reco.sh $filename $FILEBASENAME
+        @ nFile++
+        end
+
+    </command>
+    <stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/matching_mc_reco_$FILEBASENAME.out" />
+    <stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/matching_mc_reco_$FILEBASENAME.err" />
+
+    <ResourceUsage>
+        <Times>
+            <MaxWallTime>3</MaxWallTime>
+        </Times>
+        <Memory>
+            <MinMemory>4500</MinMemory>
+        </Memory>
+    </ResourceUsage>
+
+    <Generator>
+        <Location>/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/scheduler/gen/</Location>
+    </Generator>
+    <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/output/matching_mc_reco/" />
+
+    <SandBox installer="ZIP">
+        <Package name="run12ana">
+            <File>file:./star_star.simg</File>
+            <File>file:./container_matching_mc_reco.sh</File>
+            <File>file:./macros/matching_mc_reco.cxx</File>
+        </Package>
+    </SandBox>
+
+</job>
+

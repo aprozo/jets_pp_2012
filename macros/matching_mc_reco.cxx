@@ -174,21 +174,31 @@ void matchJets(const std::vector<myJet> &mcJets, const std::vector<myJet> &recoJ
     //
 }
 
-int myMatching(float jetRad = 0.4)
+int matching_mc_reco(TString mcTreeName, TString outFileName)
 {
-    TString mcTreeName = "./output/tree_pt-hat2025_41_mc.root";
-    TString recoTreeName = "./output/tree_pt-hat2025_41.root";
+    TString mcBaseName = mcTreeName(mcTreeName.Last('/') + 1, mcTreeName.Length());
+    // TString recoBaseName = recoTreeName(recoTreeName.Last('/') + 1, recoTreeName.Length());
+    // if (mcBaseName != recoBaseName)
+    // {
+    //     cerr << "Input files have different names" << endl;
+    //     return -1;
+    // }
 
+    TSting mcFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/mc/";
+    TSting recoFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/geant/";
+
+    // TSting recoFolder = recoTreeName(0, recoTreeName.Last('/') + 1);
+    // TSting mcFolder = mcTreeName(0, mcTreeName.Last('/') + 1);
+    TString recoTreeName = recoFolder + mcBaseName;
+
+    const int maxEvents = 0;
+    const float jetRad = 0.4;
     float EtaCut = 1.0 - jetRad;
     // Set Minimum Constituent pt
     double ConMinPt = 0.2;
     const double mcJetMinPt = 5;   // GeV
     const double recoJetMinPt = 5; // GeV
     const double deltaRMax = 0.2;
-
-    // Output
-    // ------
-    TString outFileName = "./output/test_matching.root";
 
     int MatchNumber = 0;
     int FakeNumber = 0;
@@ -199,7 +209,6 @@ int myMatching(float jetRad = 0.4)
     int FakeEventNumber = 0;
 
     // Set up Trees
-
     InputTreeEntry inputMc;
     TClonesArray *mcJets = inputMc.jets;
 
@@ -245,7 +254,6 @@ int myMatching(float jetRad = 0.4)
 
     int nEventsMc = mcTree->GetEntries();
     vector<int> recoEventNumbers;
-    int maxEvents = 1000;
 
     for (Long64_t iEvent = 0; iEvent < nEventsMc; ++iEvent)
     {
