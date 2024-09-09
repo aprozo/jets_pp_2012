@@ -174,7 +174,7 @@ void matchJets(const std::vector<myJet> &mcJets, const std::vector<myJet> &recoJ
     //
 }
 
-int matching_mc_reco(TString mcTreeName, TString outFileName)
+int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", TString outFileName = "output/matching.root")
 {
     TString mcBaseName = mcTreeName(mcTreeName.Last('/') + 1, mcTreeName.Length());
     // TString recoBaseName = recoTreeName(recoTreeName.Last('/') + 1, recoTreeName.Length());
@@ -184,12 +184,19 @@ int matching_mc_reco(TString mcTreeName, TString outFileName)
     //     return -1;
     // }
 
-    TSting mcFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/mc/";
-    TSting recoFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/geant/";
+    TString mcFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/mc/";
+    TString recoFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/geant/";
 
     // TSting recoFolder = recoTreeName(0, recoTreeName.Last('/') + 1);
     // TSting mcFolder = mcTreeName(0, mcTreeName.Last('/') + 1);
     TString recoTreeName = recoFolder + mcBaseName;
+    // recoTreeName = "output/tree_pt-hat2025_41.root";
+    // check if file exists
+    if (gSystem->AccessPathName(recoTreeName) || gSystem->AccessPathName(mcTreeName))
+    {
+        cerr << "File " << recoTreeName << " does not exist" << endl;
+        return -1;
+    }
 
     const int maxEvents = 0;
     const float jetRad = 0.4;
@@ -240,13 +247,15 @@ int matching_mc_reco(TString mcTreeName, TString outFileName)
     TTree *FakeTree = createTree(reco, "FakeTree");
     TTree *MissTree = createTree(mc, "MissTree");
 
-    TH1D *hDeltaR = new TH1D("hDeltaR", "#Delta R all; #Delta R", 1000, 0, 5);
-    TH1D *hPtMc = new TH1D("hPtMc", "Mc p_{t}; p_{t}, GeV/c", 1000, 0, 100);
-    TH1D *hPtReco = new TH1D("hPtReco", "Reco p_{t}; p_{t}, GeV/c", 1000, 0, 100);
-    TH2D *hPtMcReco = new TH2D("hPtMcReco", "Mc p_{t} vs Reco p_{t}; Mc p_{t}, GeV/c; Reco p_{t}, GeV/c", 1000, 0, 100, 1000, 0, 100);
-    TH1D *hDeltaRMatched = new TH1D("hDeltaRMatched", "#Delta R matched; #Delta R", 100, 0, 1);
-
+    TH1D *hDeltaR = new TH1D("hDeltaR", "#Delta R all; #Delta R", 350, 0, 3.5);
+    TH1D *hPtMc = new TH1D("hPtMc", "Mc p_{t}; p_{t}, GeV/c", 500, 0, 50);
+    TH1D *hPtReco = new TH1D("hPtReco", "Reco p_{t}; p_{t}, GeV/c", 500, 0, 50);
+    TH2D *hPtMcReco = new TH2D("hPtMcReco", "Mc p_{t} vs Reco p_{t}; Mc p_{t}, GeV/c; Reco p_{t}, GeV/c", 500, 0, 50, 500, 0, 50);
+    TH1D *hDeltaRMatched = new TH1D("hDeltaRMatched", "#Delta R matched; #Delta R", 100, 0, 0.5);
     TH2D *hNJets = new TH2D("hNJets", "; Number of Mc jets; Number of Reco jets", 20, 0, 20, 20, 0, 20);
+    TH1D *hMissedJets = new TH1D("hMissedJets", "Missed Jets; Events", 10, 0, 10);
+    TH1D *hFakeJets = new TH1D("hFakeJets", "Fake Jets; Events", 10, 0, 10);
+    TH1D *hMatchedJets = new TH1D("hMatchedJets", "Matched Jets; Events", 10, 0, 10);
 
     //================================================================================================
     // Begin Looping over MC events
@@ -403,6 +412,11 @@ int matching_mc_reco(TString mcTreeName, TString outFileName)
 
         matchJets(myMcJets, myRecoJets, matches, misses, fakes, deltaRMax);
 
+        if (matches.size() > 0)
+        {
+            hMatchedJets->Fill(matches.size());
+        }
+
         for (auto match : matches)
         {
             auto mcJet = myMcJets[match.first];
@@ -421,6 +435,11 @@ int matching_mc_reco(TString mcTreeName, TString outFileName)
             MatchNumber++;
         }
 
+        if (misses.size() > 0)
+        {
+            hMissedJets->Fill(misses.size());
+        }
+
         for (int mcIndex : misses)
         {
             auto mcJet = myMcJets[mcIndex];
@@ -428,6 +447,11 @@ int matching_mc_reco(TString mcTreeName, TString outFileName)
             mc.weight = mcJet.weight;
             MissTree->Fill();
             MissNumber++;
+        }
+
+        if (fakes.size() > 0)
+        {
+            hFakeJets->Fill(fakes.size());
         }
 
         for (int recoIndex : fakes)
