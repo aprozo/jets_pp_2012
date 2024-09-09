@@ -26,6 +26,13 @@ star_star.simg
 submit/scheduler/
 bin/
 
+
+run12data*.package
+run12*.zip
+
+
+
+
 # Prerequisites
 *.d
 
@@ -45,6 +52,8 @@ bin/
 *.dll
 *.pcm
 *.d
+*dict.cxx
+*dict.h
 
 # Fortran module files
 *.mod

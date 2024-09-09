@@ -56,7 +56,7 @@ rerun_trees() {
         submit_tree_create $data_type
     done
 
-    ./wait_for_job.csh
+    ./condor_control.sh
     echo ""
     echo "========================================"
     echo "=========trees are finished============="
@@ -88,7 +88,7 @@ run_analysis() {
 ####################################################################################################
 # Main script execution
 
-data_types=(MB HT2 mc geant)
+data_types=(mc)
 cleanup
-# rerun_trees
-run_analysis
+rerun_trees
+# run_analysis

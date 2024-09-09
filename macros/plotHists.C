@@ -23,9 +23,10 @@ int plotHists()
     TString inputFiles[4];
     TCanvas *can = new TCanvas("c1", "c1", 800, 600);
     TLatex *tex = new TLatex();
-
+    tex->SetNDC();
     can->SetLogy();
-    can->SaveAs("plots.pdf[");
+    TString outputName= "output/plots/all_pt.pdf";
+    can->SaveAs(outputName+"[");
 
     for (int i = 0; i < 4; i++)
     {
@@ -40,9 +41,9 @@ int plotHists()
             hist->GetXaxis()->SetRangeUser(0, 50);
             hist->Draw();
             tex->DrawLatex(0.5, 0.5, data_type[i]);
-            can->SaveAs("output/plots/all_pt.pdf");
+            can->SaveAs(outputName);
         }
     }
-    can->SaveAs("plots.pdf]");
+    can->SaveAs(outputName+"]");
     return 0;
 }
