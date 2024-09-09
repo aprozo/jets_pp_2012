@@ -31,6 +31,7 @@ submit_analysis() {
     mkdir -p output/$data_type/hists
     star-submit-template -template submit/ana_trees.xml -entities trigger=$data_type
 }
+
 # Function to merge hists
 merge_hists() {
     local data_type=$1
@@ -83,6 +84,20 @@ run_analysis() {
 
 }
 
+matching_mc_geant() {
+    echo ""
+    echo "========================================"
+    echo "=========matching mc and geant=========="
+    echo "========================================"
+    echo ""
+    star-submit-template -template submit/matching_mc_reco.xml
+    ./condor_control.sh
+    hadd -f -k -j output/matched_jets.root output/matching_mc_reco/*.root
+    echo ""
+    echo "========================================"
+    echo "=========matching is finished==========="
+}
+
 ####################################################################################################
 ####################################################################################################
 ####################################################################################################
@@ -90,5 +105,6 @@ run_analysis() {
 
 data_types=(mc)
 cleanup
-rerun_trees
+# rerun_trees
+matching_mc_geant
 # run_analysis
