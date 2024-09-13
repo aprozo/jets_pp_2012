@@ -41,7 +41,7 @@ fi
     -trig $trigger \
     -o tree_$output_file \
     -N -1 \
-    -pj 0.001 50 \
+    -pj 0.001 100 \
     -pc 0.2 30 \
     -lja antikt \
     -ec 1 \
