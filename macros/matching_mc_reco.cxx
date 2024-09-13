@@ -203,8 +203,8 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
     float EtaCut = 1.0 - jetRad;
     // Set Minimum Constituent pt
     double ConMinPt = 0.2;
-    const double mcJetMinPt = 5;   // GeV
-    const double recoJetMinPt = 5; // GeV
+    const double mcJetMinPt = 3;   // GeV
+    const double recoJetMinPt = 3; // GeV
     const double deltaRMax = 0.2;
 
     int MatchNumber = 0;
@@ -254,8 +254,10 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
     TH1D *hDeltaRMatched = new TH1D("hDeltaRMatched", "#Delta R matched; #Delta R", 100, 0, 0.5);
     TH2D *hNJets = new TH2D("hNJets", "; Number of Mc jets; Number of Reco jets", 20, 0, 20, 20, 0, 20);
     TH1D *hMissedJets = new TH1D("hMissedJets", "Missed Jets; Events", 10, 0, 10);
-    TH1D *hFakeJets = new TH1D("hFakeJets", "Fake Jets; Events", 10, 0, 10);
-    TH1D *hMatchedJets = new TH1D("hMatchedJets", "Matched Jets; Events", 10, 0, 10);
+    TH1D *hFakeJets = new TH1D("hFakeJets", "Fake Jets; Events", 20, 0, 20);
+    TH1D *hMatchedJets = new TH1D("hMatchedJets", "Matched Jets; Events", 20, 0, 20);
+    TH2D *hMatchedMissed = new TH2D("hMatchedMissed", "Matched vs Missed; Missed; Matched", 20, 0, 20, 10, 0, 10);
+    TH2D *hMatchedFake = new TH2D("hMatchedFake", "Matched vs Fake; Fake; Matched", 20, 0, 20, 10, 0, 10);
 
     //================================================================================================
     // Begin Looping over MC events
@@ -438,6 +440,10 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
         if (misses.size() > 0)
         {
             hMissedJets->Fill(misses.size());
+            if (matches.size() > 0)
+            {
+                hMatchedMissed->Fill(misses.size(), matches.size());
+            }
         }
 
         for (int mcIndex : misses)
@@ -452,6 +458,10 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
         if (fakes.size() > 0)
         {
             hFakeJets->Fill(fakes.size());
+            if (matches.size() > 0)
+            {
+                hMatchedFake->Fill(fakes.size(), matches.size());
+            }
         }
 
         for (int recoIndex : fakes)
