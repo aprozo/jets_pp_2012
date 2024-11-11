@@ -3,6 +3,8 @@
 #     -B /gpfs01 -B /star star_star.simg \
 #     bash /gpfs01/star/pwg/prozorov/jets_pp_2012/container.sh ./ppRun12Datapicos/ppMBRun12/split/sum0_part4.root MB
 
+# ./bin/RunppAna -i  ppRun12Datapicos/test_embedding_pt-hat911_71.root -intype mcpico -c JetTreeMc -trig all -o test_embedding_pt-hat911_71.root -N 100 -pj 1 2000 -pc 0.2 1000 -lja antikt -ec 1 -R 0.4
+
 singularity exec -e \
     -B $PWD star_star.simg \
     bash ./container.sh ppRun12Datapicos/test_embedding_pt-hat911_71.root geant

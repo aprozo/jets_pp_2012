@@ -159,7 +159,8 @@ private :
   TClonesArray* pHardPartons = 0;           ///< For pythia data, the original hard scatter
   TClonesArray* pHardPartonNames = 0;       ///< For pythia data, the original hard scatter names (ubar, g, ...)
   TStarJetVector* pHT = 0;                  ///< the trigger (HT) object, if it exists
-
+  
+  vector<double> eventTotal;
   vector<PseudoJet> particles;
   vector<PseudoJet> partons;
   double rho=0;                             ///< background density
@@ -177,6 +178,14 @@ private :
   double refmult=0;
  
   double weight=0;    
+
+  double totalpT = 0;
+  double hardestpT = 0;
+  double vZ = 0;
+
+  vector<double> towerphis;
+  vector<double> toweretas;
+  vector<double> towerenergies;
 
  
   JetAnalyzer *pJA=0;
@@ -253,6 +262,17 @@ public:
 
   /// Get the weight of the current event (mainly for PYTHIA)
   inline double GetEventWeight()           { return weight; };
+
+  /// Get the total pT of event to check for duplicates
+  inline double GetTotalpT()           { return totalpT; };
+
+  inline double GetHardestpT()         { return hardestpT;};
+
+  inline double Getvz() {return vZ;}
+
+  inline vector<double> GetTowerPhis() {return towerphis;};
+  inline vector<double> GetTowerEtas() {return toweretas;};
+  inline vector<double> GetTowerEnergies() {return towerenergies;};
 
   /// Get the refmult of the current event
   inline double GetRefmult()           { return refmult; };

@@ -13,7 +13,7 @@ make
 
 treeType=JetTree
 picoType=pico
-trigger=pp
+trigger=all
 geantnum=0
 
 if [[ $data_type = HT2 ]]; then
@@ -34,6 +34,9 @@ if [[ $data_type = mc ]]; then
     trigger=All
 fi
 
+echo "Running with input file: $input_file"
+echo "Running with output file: $output_file"
+
 ./bin/RunppAna \
     -i $input_file \
     -intype $picoType \
@@ -48,3 +51,6 @@ fi
     -R 0.4 \
     -hadcorr 0.9999999 \
     -geantnum $geantnum
+
+echo "Command was: 
+./bin/RunppAna -i $input_file -intype $picoType -c $treeType -trig $trigger -o tree_$output_file -N -1 -pj 0.001 100 -pc 0.2 30 -lja antikt -ec 1 -R 0.4 -hadcorr 0.9999999 -geantnum $geantnum"

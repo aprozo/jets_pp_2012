@@ -26,12 +26,8 @@ star_star.simg
 submit/scheduler/
 bin/
 
-
 run12data*.package
 run12*.zip
-
-
-
 
 # Prerequisites
 *.d
@@ -69,3 +65,5 @@ run12*.zip
 *.exe
 *.out
 *.app
+
+andrew/

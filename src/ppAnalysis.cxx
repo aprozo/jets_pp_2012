@@ -298,7 +298,7 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
 
   if (!forcedgeantnum)
   {
-    if (pars.InputName.Contains("Geant") || pars.InputName.Contains("EmbedPythiaRun12"))
+    if (pars.InputName.Contains("Geant") || pars.InputName.Contains("EmbedPythiaRun12") ||pars.InputName.Contains("pt-hat") )
     {
       pars.UseGeantNumbering = true;
     }
@@ -406,8 +406,8 @@ bool ppAnalysis::InitChains()
     pReader = SetupReader(Events, pars);
 
     InitializeReader(pReader, pars.InputName, NEvents, PicoDebugLevel, pars.HadronicCorr);
-    if (pReader && pars.InputName.Contains("picoDst_4_5"))
-      pReader->SetUseRejectAnyway(true);
+    // if (pReader && pars.InputName.Contains("picoDst_4_5"))
+    //   pReader->SetUseRejectAnyway(true);
 
     if (pars.intype == MCPICO)
       TurnOffCuts(pReader);
@@ -462,6 +462,7 @@ EVENTRESULT ppAnalysis::RunEvent()
 
     eventid = header->GetEventId();
     runid = header->GetRunId();
+    vZ = header->GetPrimaryVertexZ();
 
     // For GEANT: Need to devise a runid that's unique but also
     // reproducible to match Geant and GeantMc data.
@@ -583,6 +584,18 @@ EVENTRESULT ppAnalysis::RunEvent()
     particles.back().set_user_info(new JetAnalysisUserInfo(3 * sv->GetCharge(), "", sv->GetTowerID()));
   }
   // cout << pFullEvent->GetEntries() << "  " <<  particles.size() << endl;
+  // calculate total pT of event
+  totalpT = 0;
+  hardestpT = 0;
+  for (int i = 0; i < particles.size(); ++i)
+  {
+    totalpT += particles[i].perp();
+    if (particles[i].perp() > hardestpT)
+    {
+      hardestpT = particles[i].perp();
+    }
+  }
+  // cout << std::setprecision(99)<< totalpT << endl;
 
   if (particles.size() == 0)
     return EVENTRESULT::NOCONSTS;
