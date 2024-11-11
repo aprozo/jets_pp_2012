@@ -87,27 +87,17 @@ int main(int argc, const char **argv)
   if (pReader)
   {
     TStarJetPicoTowerCuts *towerCuts = pReader->GetTowerCuts();
-    if (pars.InputName.Contains("Run12"))
-      towerCuts->AddBadTowers(TString(getenv("STARPICOPATH")) + "/Combined_pp200Y12_badtower.list");
-    else
-      towerCuts->AddBadTowers(TString(getenv("STARPICOPATH")) + "/Combined_y7_PP_Nick.txt");
-  }
+    towerCuts->AddBadTowers("lists/Combined_pp200Y12_badtower_isaac.list");
 
-  // Explicitly add bad run list here
-  // --------------------------------
-  if (pReader)
-  {
-    if (pars.InputName.Contains("Run12"))
+    TString csvfile = "lists/pp200Y12_badrun_isaac.list";
+    vector<int> badruns;
+    if (readinbadrunlist(badruns, csvfile) == false)
     {
-      TString csvfile = TString(getenv("STARPICOPATH")) + "/pp200Y12_badrun.list";
-      vector<int> badruns;
-      if (readinbadrunlist(badruns, csvfile) == false)
-      {
-        cerr << "Problems reading bad run list" << endl;
-        return -1;
-      }
-      pReader->AddMaskedRuns(badruns);
+      cerr << "Problems reading bad run list" << endl;
+      return -1;
     }
+    pReader->AddMaskedRuns(badruns);
+
   }
 
   // Files and histograms
@@ -139,16 +129,24 @@ int main(int argc, const char **argv)
   TTree *ResultTree = new TTree("ResultTree", "Result Jets");
 
   // Give each event a unique ID to compare event by event with different runs
+
   int runid;
   ResultTree->Branch("runid", &runid, "runid/I");
   int eventid;
   ResultTree->Branch("eventid", &eventid, "eventid/I");
+  double vZ;
+  ResultTree->Branch("vZ", &vZ, "vZ/D");
   double weight = 1;
   ResultTree->Branch("weight", &weight, "weight/D");
   double refmult;
   ResultTree->Branch("refmult", &refmult, "refmult/d");
   int njets = 0;
   ResultTree->Branch("njets", &njets, "njets/I");
+  double totalpT = 0;
+  ResultTree->Branch("totalpT", &totalpT, "totalpT/D");
+
+  double hardestpT = 0;
+  ResultTree->Branch("hardestpT", &hardestpT, "hardestpT/D");
   vector<double> pT_lead0;
   ResultTree->Branch("pT_lead0", &pT_lead0);
   vector<double> pT_lead3;
@@ -170,7 +168,7 @@ int main(int argc, const char **argv)
   // Go through events
   // -----------------
   Long64_t Naccepted = 0;
-  cout << "Running analysis" << endl;
+  // cout << "Running analysis" << endl;
   try
   {
     bool ContinueReading = true;
@@ -233,6 +231,11 @@ int main(int argc, const char **argv)
       refmult = ppana->GetRefmult();
       runid = ppana->GetRunid();
       eventid = ppana->GetEventid();
+      totalpT = ppana->GetTotalpT();
+      hardestpT = ppana->GetHardestpT();
+      vZ = ppana->Getvz();
+
+      // cout << "got sizes of " << towerphis.size() << " " << toweretas.size() << endl;
 
       vector<ResultStruct> Result = ppana->GetResult();
 
@@ -240,6 +243,7 @@ int main(int argc, const char **argv)
       int ijet = 0;
       for (auto &gr : Result)
       {
+
         TStarJetVector sv = TStarJetVector(MakeTLorentzVector(gr.orig));
         sv.SetCharge(gr.orig.user_info<JetAnalysisUserInfo>().GetQuarkCharge() / 3);
         new (Jets[ijet]) TStarJetVectorJet(sv);
