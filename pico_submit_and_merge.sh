@@ -103,8 +103,8 @@ matching_mc_geant() {
 ####################################################################################################
 # Main script execution
 
-data_types=(mc)
+data_types=(mc geant)
 cleanup
-# rerun_trees
+rerun_trees
 matching_mc_geant
 # run_analysis

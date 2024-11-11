@@ -55,6 +55,7 @@ struct InputTreeEntry
     double weight;
     int njets;
     TClonesArray *jets;
+    double totalpT;
 };
 
 TTree *initTree(InputTreeEntry &treeEntry, TString name)
@@ -68,6 +69,7 @@ TTree *initTree(InputTreeEntry &treeEntry, TString name)
     inputTree->SetBranchAddress("runid", &treeEntry.runid);
     inputTree->SetBranchAddress("weight", &treeEntry.weight);
     inputTree->SetBranchAddress("njets", &treeEntry.njets);
+    inputTree->SetBranchAddress("totalpT", &treeEntry.totalpT);
     return inputTree;
 }
 
@@ -305,19 +307,56 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
             recoEventNumbers.push_back(recoEvent);
             MatchedGeantEventNumber++;
         }
-        //  //bug in new embedding
-        //     if(mctotalpT > 23.11003 && mctotalpT < 23.11004){continue;} //11-15
-        //     if(mctotalpT > 33.749385 && mctotalpT < 33.749405){continue;} //15-20
-        //     if(mctotalpT > 47.09071 && mctotalpT < 47.09072){continue;} //20-25
-        //     if(mctotalpT > 9.62226 && mctotalpT < 9.62227){continue;} //2-3
-        //     if(mctotalpT > 46.63831 && mctotalpT < 46.63832){continue;} //25-35
-        //     if(mctotalpT > 6.90831 && mctotalpT < 6.90832){continue;} //3-4
-        //     if(mctotalpT > 82.68752 && mctotalpT < 82.68753){continue;} //35-45
-        //     if(mctotalpT > 100.25616 && mctotalpT < 100.25617){continue;} //45-55
-        //     if(mctotalpT > 75.10883 && mctotalpT < 75.10884){continue;} //55-999
-        //     if(mctotalpT > 3.75004 && mctotalpT < 3.75005){continue;} //5-7
-        //     if(mctotalpT > 6.47623 && mctotalpT < 6.47624){continue;} //7-9
-        //     if(mctotalpT > 4.22790 && mctotalpT < 4.22791){continue;} //9-11
+        double mcTotalPt = inputMc.totalpT;
+        // bug in new embedding
+        if (mcTotalPt > 23.11003 && mcTotalPt < 23.11004)
+        {
+            continue;
+        } // 11-15
+        if (mcTotalPt > 33.749385 && mcTotalPt < 33.749405)
+        {
+            continue;
+        } // 15-20
+        if (mcTotalPt > 47.09071 && mcTotalPt < 47.09072)
+        {
+            continue;
+        } // 20-25
+        if (mcTotalPt > 9.62226 && mcTotalPt < 9.62227)
+        {
+            continue;
+        } // 2-3
+        if (mcTotalPt > 46.63831 && mcTotalPt < 46.63832)
+        {
+            continue;
+        } // 25-35
+        if (mcTotalPt > 6.90831 && mcTotalPt < 6.90832)
+        {
+            continue;
+        } // 3-4
+        if (mcTotalPt > 82.68752 && mcTotalPt < 82.68753)
+        {
+            continue;
+        } // 35-45
+        if (mcTotalPt > 100.25616 && mcTotalPt < 100.25617)
+        {
+            continue;
+        } // 45-55
+        if (mcTotalPt > 75.10883 && mcTotalPt < 75.10884)
+        {
+            continue;
+        } // 55-999
+        if (mcTotalPt > 3.75004 && mcTotalPt < 3.75005)
+        {
+            continue;
+        } // 5-7
+        if (mcTotalPt > 6.47623 && mcTotalPt < 6.47624)
+        {
+            continue;
+        } // 7-9
+        if (mcTotalPt > 4.22790 && mcTotalPt < 4.22791)
+        {
+            continue;
+        } // 9-11
 
         // fill in regardless of match/miss to get reference and check which events are candidates for high weight and throw them out
 
@@ -325,19 +364,16 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
         //================================================================================================
         bool isBad = false;
         int weightBin = -1;
-        bool old = false;
-        for (int i = 0; i < vptbins.size(); ++i)
+        for (unsigned i = 0; i < vptbins.size(); ++i)
         {
-            if (inputMc.weight == XSEC[i] / NUMBEROFEVENT[i])
+            if (mcweight == XSEC[i] / NUMBEROFEVENT[i])
             {
-                old = true;
                 weightBin = i;
             }
         }
-        for (auto jet : myMcJets)
+        for (const auto &jet : myMcJets)
         {
-            double Jetpt = jet.orig.Pt();
-            if (old && Jetpt > MAXPT[weightBin])
+            if (jet.orig.Pt() > MAXPT[weightBin])
             {
                 isBad = true;
                 break;
