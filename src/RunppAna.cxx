@@ -107,9 +107,6 @@ int main(int argc, const char **argv)
   TH2::SetDefaultSumw2(true);
   TH3::SetDefaultSumw2(true);
 
-  TH3D *cptphieta = new TH3D("cptphieta", "", 500, 0.2, 50.2, 100, 0, TMath::TwoPi(), 100, -1, 1);
-  TH3D *nptphieta = new TH3D("nptphieta", "", 500, 0.2, 50.2, 100, 0, TMath::TwoPi(), 100, -1, 1);
-
   // List of miscellaneous info
   // --------------------------
   TTree *info = new TTree("info", "Information");

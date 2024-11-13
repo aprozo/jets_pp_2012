@@ -9,6 +9,7 @@ input_file=${1}
 output_file=$(basename $input_file)
 data_type=${2}
 
+rm bin/RunppAna
 make
 
 treeType=JetTree
