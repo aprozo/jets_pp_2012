@@ -90,7 +90,7 @@ matching_mc_geant() {
     echo "=========matching mc and geant=========="
     echo "========================================"
     echo ""
-    star-submit-template -template submit/matching_mc_reco.xml
+    star-submit submit/matching_mc_reco.xml
     ./condor_control.sh
     hadd -f -k -j output/matched_jets.root output/matching_mc_reco/*.root
     echo ""

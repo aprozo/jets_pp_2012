@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8" ?>
 
-<job  name="ana_trees_&trigger;_" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false" >
-	
-<input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/trees_&trigger;.list" nFiles="all" />
+<job name="ana_trees_&trigger;_" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false">
+
+        <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/trees_&trigger;.list" nFiles="all" />
 
         <command>
         @ nFile=0
@@ -16,8 +16,8 @@
         end
 
         </command>
-<stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/&trigger;_$FILEBASENAME.out" />
-<stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/&trigger;_$FILEBASENAME.err" />
+        <stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/&trigger;_$FILEBASENAME.out" />
+        <stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/&trigger;_$FILEBASENAME.err" />
 
         <ResourceUsage>
                 <Times>
@@ -28,18 +28,18 @@
                 </Memory>
         </ResourceUsage>
 
-        <Generator> 
-                <Location>/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/scheduler/gen/</Location> 
+        <Generator>
+                <Location>/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/scheduler/gen/</Location>
         </Generator>
         <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/output/&trigger;/hists/" />
-        
+
         <SandBox installer="ZIP">
-        <Package name="run12ana">
-            <File>file:./star_star.simg</File>
-            <File>file:./container_ana_trees.sh</File>
-            <File>file:./macros/treeAna.cxx</File>
-	</Package>
-	</SandBox>
+                <Package name="run12ana">
+                        <File>file:./star_star.simg</File>
+                        <File>file:./container_ana_trees.sh</File>
+                        <File>file:./macros/treeAna.cxx</File>
+                </Package>
+        </SandBox>
 
 </job>
 

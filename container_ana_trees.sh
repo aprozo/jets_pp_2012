@@ -9,4 +9,4 @@ export LD_LIBRARY_PATH=/usr/local/jetreader_build/lib:/lib/:/usr/local/eventStru
 input_file=${1}
 output_file=${2}
 
-root -l './macros/treeAna.cxx+("'$input_file'", "'$output_file'")'
+root -l './macros/treeAna.cxx++("'$input_file'", "'$output_file'")'

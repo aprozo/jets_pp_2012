@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8" ?>
 
-<job  name="jets_&trigger;_" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false" >
-	
-<input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/data_file_&trigger;.list" nFiles="all" />
+<job name="jets_&trigger;_" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false">
+
+        <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/data_file_&trigger;.list" nFiles="all" />
 
         <command>
         @ nFile=0
@@ -16,8 +16,8 @@
         end
 
         </command>
-<stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/&trigger;_$FILEBASENAME.out" />
-<stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/&trigger;_$FILEBASENAME.err" />
+        <stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/&trigger;_$FILEBASENAME.out" />
+        <stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/&trigger;_$FILEBASENAME.err" />
 
         <ResourceUsage>
                 <Times>
@@ -28,21 +28,22 @@
                 </Memory>
         </ResourceUsage>
 
-        <Generator> 
-                <Location>/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/scheduler/gen/</Location> 
+        <Generator>
+                <Location>/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/scheduler/gen/</Location>
         </Generator>
         <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/output/&trigger;/" />
-        
+
         <SandBox installer="ZIP">
-        <Package name="run12data">
-            <File>file:./star_star.simg</File>
-            <File>file:./container.sh</File>
-            <File>file:./setup.sh</File>
-            <File>file:./Makefile</File>  
-            <File>file:./src/</File>          
-            <File>file:./bin/RunppAna</File>
-		</Package>
-	</SandBox>
+                <Package name="run12data">
+                        <File>file:./star_star.simg</File>
+                        <File>file:./lists</File>
+                        <File>file:./container.sh</File>
+                        <File>file:./setup.sh</File>
+                        <File>file:./Makefile</File>
+                        <File>file:./src/</File>
+                        <File>file:./bin/RunppAna</File>
+                </Package>
+        </SandBox>
 
 </job>
 

@@ -15,6 +15,7 @@ treesplit*.list
 *.condor
 *.report
 *dataset
+*dataset.tmp
 *session.xml
 schedTemplateExp.xml
 *root
