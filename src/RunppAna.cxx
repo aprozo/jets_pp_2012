@@ -97,7 +97,6 @@ int main(int argc, const char **argv)
       return -1;
     }
     pReader->AddMaskedRuns(badruns);
-
   }
 
   // Files and histograms
@@ -117,7 +116,7 @@ int main(int argc, const char **argv)
   info->Branch("InputName", (void *)pars.InputName.Data(), "InputName/C");
   info->Branch("ChainName", (void *)pars.ChainName.Data(), "ChainName/C");
   info->Branch("R", (void *)&pars.R, "R/D");
-  info->Branch("LargeJetAlgorithm", (UInt_t *)&pars.LargeJetAlgorithm, "LargeJetAlgorithm/i");
+  info->Branch("LargeJetAlgorithm", (UInt_t *)&pars.LargeJetAlgorithm, "LargeJetAlgorithm/I");
   info->Branch("PtJetMin", (void *)&pars.PtJetMin, "PtJetMin/D");
   info->Branch("PtJetMax", (void *)&pars.PtJetMax, "PtJetMax/D");
   info->Branch("EtaConsCut", (void *)&pars.EtaConsCut, "EtaConsCut/D");
@@ -139,12 +138,11 @@ int main(int argc, const char **argv)
   double weight = 1;
   ResultTree->Branch("weight", &weight, "weight/D");
   double refmult;
-  ResultTree->Branch("refmult", &refmult, "refmult/d");
+  ResultTree->Branch("refmult", &refmult, "refmult/D");
   int njets = 0;
   ResultTree->Branch("njets", &njets, "njets/I");
   double totalpT = 0;
   ResultTree->Branch("totalpT", &totalpT, "totalpT/D");
-
   double hardestpT = 0;
   ResultTree->Branch("hardestpT", &hardestpT, "hardestpT/D");
   vector<double> pT_lead0;

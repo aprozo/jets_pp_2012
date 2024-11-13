@@ -298,7 +298,7 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
 
   if (!forcedgeantnum)
   {
-    if (pars.InputName.Contains("Geant") || pars.InputName.Contains("EmbedPythiaRun12") ||pars.InputName.Contains("pt-hat") )
+    if (pars.InputName.Contains("Geant") || pars.InputName.Contains("EmbedPythiaRun12") || pars.InputName.Contains("pt-hat"))
     {
       pars.UseGeantNumbering = true;
     }
@@ -662,10 +662,10 @@ EVENTRESULT ppAnalysis::RunEvent()
     if (nparticles == 0)
       continue;
     float pTlead = constituents[0].pt();
-    double pT_lead0;
-    double pT_lead3;
-    double pT_lead5;
-    double pT_lead7;
+    double pT_lead0 = 0;
+    double pT_lead3 = 0;
+    double pT_lead5 = 0;
+    double pT_lead7 = 0;
     if (pTlead > 0)
     {
       pT_lead0 = CurrentJet.pt();
