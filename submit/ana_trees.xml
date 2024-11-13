@@ -11,7 +11,7 @@
         # put your script here, with filename as input file
         echo $filename
         echo "starting singularity"
-        singularity exec -e -B $SCRATCH -B /gpfs01 star_star.simg bash container_ana_trees.sh $filename $FILEBASENAME
+        singularity exec -e -B $SCRATCH -B /gpfs01 star_star.simg bash container_ana_trees.sh $filename $FILEBASENAME.root
         @ nFile++
         end
 

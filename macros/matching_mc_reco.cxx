@@ -192,6 +192,7 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
     // TSting recoFolder = recoTreeName(0, recoTreeName.Last('/') + 1);
     // TSting mcFolder = mcTreeName(0, mcTreeName.Last('/') + 1);
     TString recoTreeName = recoFolder + mcBaseName;
+    mcTreeName=mcFolder+mcBaseName;
     // recoTreeName = "output/tree_pt-hat2025_41.root";
     // check if file exists
     if (gSystem->AccessPathName(recoTreeName) || gSystem->AccessPathName(mcTreeName))
@@ -200,13 +201,15 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
         return -1;
     }
 
+    
+
     const int maxEvents = 0;
     const float jetRad = 0.4;
     float EtaCut = 1.0 - jetRad;
     // Set Minimum Constituent pt
     double ConMinPt = 0.2;
     const double mcJetMinPt = 3;   // GeV
-    const double recoJetMinPt = 3; // GeV
+    const double recoJetMinPt = 5; // GeV
     const double deltaRMax = 0.2;
 
     int MatchNumber = 0;
@@ -301,7 +304,9 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
             continue;
         } // skip this event
         // Still in MC level loop, get matching Geant Event
-        Long64_t recoEvent = recoTree->GetEntryNumberWithIndex(inputMc.runid, inputMc.eventid);
+        Long64_t recoEvent =-1;
+        recoEvent = recoTree->GetEntryNumberWithIndex(inputMc.runid, inputMc.eventid);
+
         if (recoEvent >= 0)
         {
             recoEventNumbers.push_back(recoEvent);
@@ -364,6 +369,8 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
         //================================================================================================
         bool isBad = false;
         int weightBin = -1;
+        double mcweight = inputMc.weight;
+
         for (unsigned i = 0; i < vptbins.size(); ++i)
         {
             if (mcweight == XSEC[i] / NUMBEROFEVENT[i])
@@ -371,6 +378,8 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
                 weightBin = i;
             }
         }
+
+        
         for (const auto &jet : myMcJets)
         {
             if (jet.orig.Pt() > MAXPT[weightBin])
