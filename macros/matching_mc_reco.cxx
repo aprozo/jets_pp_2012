@@ -179,12 +179,6 @@ void matchJets(const std::vector<myJet> &mcJets, const std::vector<myJet> &recoJ
 int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", TString outFileName = "output/matching.root")
 {
     TString mcBaseName = mcTreeName(mcTreeName.Last('/') + 1, mcTreeName.Length());
-    // TString recoBaseName = recoTreeName(recoTreeName.Last('/') + 1, recoTreeName.Length());
-    // if (mcBaseName != recoBaseName)
-    // {
-    //     cerr << "Input files have different names" << endl;
-    //     return -1;
-    // }
 
     TString mcFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/mc/";
     TString recoFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/geant/";
@@ -200,6 +194,7 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
         cerr << "File " << recoTreeName << " does not exist" << endl;
         return -1;
     }
+
 
     
 

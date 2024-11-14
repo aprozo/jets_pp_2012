@@ -61,6 +61,10 @@ rerun_trees() {
     echo ""
     echo "========================================"
     echo "=========trees are finished============="
+    for data_type in ${data_types[@]}; do
+        ls -d $PWD/output/$data_type/*.root >lists/trees_$data_type.list
+    done
+
 }
 
 run_analysis() {

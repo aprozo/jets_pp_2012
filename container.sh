@@ -12,46 +12,50 @@ data_type=${2}
 rm bin/RunppAna
 make
 
-treeType=JetTree
-picoType=pico
-trigger=all
-geantnum=0
+# Set default values for tree type, pico type, and trigger based on data type
+trigger="All"
+treeType="JetTree"
+picoType="pico"
 
-if [[ $data_type = HT2 ]]; then
-    trigger=ppHT
-fi
+# Determine trigger type and tree/pico settings based on data_type
+case "$data_type" in
+HT2)
+    trigger="ppHT"
+    ;;
+JP2)
+    trigger="ppJP"
+    ;;
+mc)
+    treeType="JetTreeMc"
+    picoType="mcpico"
+    ;;
+esac
 
-if [[ $data_type = JP2 ]]; then
-    trigger=ppJP
-fi
-
-if [[ $data_type = geant ]]; then
-    geantnum=1
-fi
-
-if [[ $data_type = mc ]]; then
-    treeType=JetTreeMc
-    picoType=mcpico
-    trigger=All
-fi
-
+# Display the input and output file information
 echo "Running with input file: $input_file"
 echo "Running with output file: $output_file"
 
-./bin/RunppAna \
-    -i $input_file \
-    -intype $picoType \
-    -c $treeType \
-    -trig $trigger \
-    -o tree_$output_file \
-    -N -1 \
-    -pj 0.001 100 \
-    -pc 0.2 30 \
-    -lja antikt \
-    -ec 1 \
-    -R 0.4 \
-    -hadcorr 0.9999999 \
-    -geantnum $geantnum
+# Define arguments for the RunppAna command
+args=(
+    -i "$input_file"
+    -intype "$picoType"
+    -c "$treeType"
+    -trig "$trigger"
+    -o "tree_$output_file"
+    -N -1
+    -pj 0.001 2000
+    -pc 0.2 30
+    -lja "antikt"
+    -ec 1
+    -R 0.4
+)
+# Append hadronic correction argument if running on Monte Carlo data
+if [[ $data_type == "geant" ]]; then
+    args+=(-hadcorr 0.9999999)
+fi
+
+# Execute the analysis command with specified arguments
+./bin/RunppAna "${args[@]}"
 
 echo "Command was: 
-./bin/RunppAna -i $input_file -intype $picoType -c $treeType -trig $trigger -o tree_$output_file -N -1 -pj 0.001 100 -pc 0.2 30 -lja antikt -ec 1 -R 0.4 -hadcorr 0.9999999 -geantnum $geantnum"
+./bin/RunppAna ${args[@]}"
