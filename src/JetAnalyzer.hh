@@ -71,7 +71,6 @@
 #include <utility>
 #include <algorithm>
 
-
 /** The main class.
  */
 class JetAnalyzer : public fastjet::ClusterSequenceArea {

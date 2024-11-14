@@ -48,10 +48,13 @@ args=(
     -lja "antikt"
     -ec 1
     -R 0.4
+    -geantnum 1
 )
 # Append hadronic correction argument if running on Monte Carlo data
 if [[ $data_type == "geant" ]]; then
     args+=(-hadcorr 0.9999999)
+    args+=(-towunc 0)
+    args+=(-fakeeff 1)
 fi
 
 # Execute the analysis command with specified arguments

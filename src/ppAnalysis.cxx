@@ -1,13 +1,10 @@
-/* @file ppAnalysis.cxx
-    @author Raghav Kunnawalkam Elayavalli
-    @version Revision 1.0
-    @brief  pp analysis for Run12 data and embedding
-    @details Uses JetAnalyzer objects
-    @date March 16, 2022
-*/
 
 #include "ppAnalysis.hh"
 #include <stdlib.h> // for getenv, atof, atoi
+#include <stdio.h>
+#include <iostream>
+#include <fstream>
+#include <string>
 
 using std::cerr;
 using std::cout;
@@ -144,11 +141,6 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
         pars.intype = MCPICO;
         continue;
       }
-      if (*parg == "mctree")
-      {
-        pars.intype = MCTREE;
-        continue;
-      }
       argsokay = false;
       break;
     }
@@ -160,42 +152,6 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
         break;
       }
       NEvents = atoi(parg->data());
-    }
-    else if (arg == "-tracksmear")
-    {
-      if (++parg == arguments.end())
-      {
-        argsokay = false;
-        break;
-      }
-      switch (atoi(parg->data()))
-      {
-      case 0:
-        cout << "Track Smearing disabled." << endl;
-        break;
-      case 1:
-        cout << "Track Smearing set to pp primaries. DeltapT/pT = 0.01+0.005 pT " << endl;
-        SigmaPt = new TF1("SigmaPt", "[0] + [1]*x", 0, 100);
-        SigmaPt->FixParameter(0, 0.01);
-        SigmaPt->FixParameter(1, 0.005);
-        break;
-      case 2:
-        cout << "Track Smearing set to AA primaries. DeltapT/pT = 0.005+0.0025 pT " << endl;
-        SigmaPt = new TF1("SigmaPt", "[0] + [1]*x", 0, 100);
-        SigmaPt->FixParameter(0, 0.005);
-        SigmaPt->FixParameter(1, 0.0025);
-
-        break;
-      case 3:
-        cout << "Track Smearing set to AA globals not implemented. DeltapT/pT = 0.01 * pT^2" << endl;
-        SigmaPt = new TF1("SigmaPt", "[0]*x*x", 0, 100);
-        SigmaPt->FixParameter(0, 0.01);
-        break;
-      case 4:
-        cout << "Unrecognized pT smearing option. " << endl;
-        argsokay = false;
-        break;
-      }
     }
     else if (arg == "-fakeeff")
     {
@@ -274,15 +230,13 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
          << " [-lja LargeJetAlgorithm]" << endl
          << " [-i infilepattern]" << endl
          << " [-c chainname]" << endl
-         << " [-intype pico|mcpico|tree|mctree|herwigtree]" << endl
+         << " [-intype pico|mcpico(embedding)]" << endl
          << " [-trig trigger name (e.g. HT)]" << endl
          << " [-pj PtJetMin PtJetMax]" << endl
          << " [-ec EtaConsCut]" << endl
          << " [-pc PtConsMin PtConsMax]" << endl
          << " [-hadcorr HadronicCorrection]  -- Set to a negative value for MIP correction." << endl
          << " [-psc PtSubConsMin PtSubConsMax]" << endl
-         << " [-tracksmear number] -- enable track pT smearing. " << endl
-         << "                      -- 1: pp primaries, 2: AuAu primaries, 3: AuAu (maybe also pp) globals." << endl
          << " [-fakeeff (0..1)] -- enable fake efficiency for systematics. 0.95 is a reasonable example." << endl
          << " [-towunc -1|0|1 ] -- Shift tower energy by this times " << pars.fTowUnc << endl
          << " [-geantnum true|false] (Force Geant run event id hack)" << endl
@@ -295,14 +249,6 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
 
   // Consistency checks
   // ------------------
-
-  if (!forcedgeantnum)
-  {
-    if (pars.InputName.Contains("Geant") || pars.InputName.Contains("EmbedPythiaRun12") || pars.InputName.Contains("pt-hat"))
-    {
-      pars.UseGeantNumbering = true;
-    }
-  }
 
   if (pars.PtJetMin <= 0)
   {
@@ -332,7 +278,6 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
 
   // Jet candidate selectors
   // -----------------------
-  // select_jet_eta     = SelectorAbsRapMax( EtaJetCut );
   select_jet_eta = SelectorAbsEtaMax(EtaJetCut);
   select_jet_pt = SelectorPtRange(pars.PtJetMin, pars.PtJetMax);
   select_jet = select_jet_eta * select_jet_pt;
@@ -343,11 +288,8 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
 
   // Initialize jet finding
   // ----------------------
-  AreaSpec = GhostedAreaSpec(EtaGhostCut, pars.GhostRepeat, pars.GhostArea);
-  AreaDef = AreaDefinition(fastjet::active_area_explicit_ghosts, AreaSpec);
-  JetDef = JetDefinition(pars.LargeJetAlgorithm, pars.R);
 
-  SelectClose = fastjet::SelectorCircle(pars.R);
+  JetDef = JetDefinition(pars.LargeJetAlgorithm, pars.R);
 
   cout << " R = " << pars.R << endl;
   cout << " Original jet algorithm : " << pars.LargeJetAlgorithm << endl;
@@ -362,10 +304,6 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
   cout << " intype = " << pars.intype << endl;
   cout << " Writing to " << pars.OutFileName << endl;
   cout << " ----------------------------" << endl;
-
-  // Provide a gaussian for track pt smearing
-  // ----------------------------------------
-  SmearPt = new TF1("SmearPt", "gaus(0)", -1, 1);
 }
 //----------------------------------------------------------------------
 ppAnalysis::~ppAnalysis()
@@ -376,7 +314,6 @@ ppAnalysis::~ppAnalysis()
     pJA = 0;
   }
 }
-
 //----------------------------------------------------------------------
 bool ppAnalysis::InitChains()
 {
@@ -389,16 +326,6 @@ bool ppAnalysis::InitChains()
   if (NEvents < 0)
     NEvents = INT_MAX;
 
-  if (pars.intype == INTREE || pars.intype == MCTREE)
-  {
-    assert(Events->GetEntries() > 0 && "Something went wrong loading events.");
-    NEvents = min(NEvents, Events->GetEntries());
-
-    pFullEvent = new TClonesArray("TStarJetVector");
-    Events->GetBranch("PythiaParticles")->SetAutoDelete(kFALSE);
-    Events->SetBranchAddress("PythiaParticles", &pFullEvent);
-  }
-
   // For picoDSTs
   // -------------
   if (pars.intype == INPICO || pars.intype == MCPICO)
@@ -406,11 +333,10 @@ bool ppAnalysis::InitChains()
     pReader = SetupReader(Events, pars);
 
     InitializeReader(pReader, pars.InputName, NEvents, PicoDebugLevel, pars.HadronicCorr);
-    // if (pReader && pars.InputName.Contains("picoDst_4_5"))
-    //   pReader->SetUseRejectAnyway(true);
-
     if (pars.intype == MCPICO)
+    {
       TurnOffCuts(pReader);
+    }
 
     cout << "Don't forget to set tower cuts for pReader!!" << endl;
   }
@@ -424,8 +350,6 @@ bool ppAnalysis::InitChains()
 // Main routine for one event.
 EVENTRESULT ppAnalysis::RunEvent()
 {
-  // cout << "-----------------------" << endl;
-  // cout << "Entering PpZgAnalysis::RunEvent " << endl;
   TStarJetVector *sv;
 
   TStarJetPicoEventHeader *header = 0;
@@ -436,7 +360,16 @@ EVENTRESULT ppAnalysis::RunEvent()
   // Reset results (from last event)
   // -------------------------------
   Result.clear();
-  weight = 1;
+  weight = 1.;
+  is_rejected = false;
+  mult = 0;
+  refmult = 0;
+  runid = -(INT_MAX - 1);
+  runid1 = -(INT_MAX - 1);
+  eventid = -(INT_MAX - 1);
+  event_sum_pt = 0.;
+  njets = 0;
+  vz = 999;
   particles.clear();
 
   switch (pars.intype)
@@ -446,23 +379,20 @@ EVENTRESULT ppAnalysis::RunEvent()
   case MCPICO:
     if (!pReader->NextEvent())
     {
-      // cout << "Can't find a next event" << endl;
-      // done=true;
       pReader->PrintStatus();
       return EVENTRESULT::ENDOFINPUT;
       break;
     }
     pReader->PrintStatus(10);
 
-    // cout << pReader->GetOutputContainer()->GetEntries() << endl;
     pFullEvent = pReader->GetOutputContainer()->GetArray();
 
     header = pReader->GetEvent()->GetHeader();
-    refmult = header->GetProperReferenceMultiplicity();
 
+    refmult = header->GetProperReferenceMultiplicity();
     eventid = header->GetEventId();
-    runid = header->GetRunId();
-    vZ = header->GetPrimaryVertexZ();
+    runid1 = header->GetRunId();
+    vz = header->GetPrimaryVertexZ();
 
     // For GEANT: Need to devise a runid that's unique but also
     // reproducible to match Geant and GeantMc data.
@@ -475,43 +405,9 @@ EVENTRESULT ppAnalysis::RunEvent()
       if (filehash < 1000000)
         filehash += 1000001;
       runid = filehash;
-      // Sigh. Apparently also need to uniquefy the event id
-      // since some are the same in the same file. Grr.
-      // The following isn't great, because it uses the number in the chain, but it should get the job done
       eventid = pReader->GetNOfCurrentEvent();
     }
-
     break;
-    // =====================================================
-  case INTREE:
-  case MCTREE:
-    if (evi >= NEvents)
-    {
-      return EVENTRESULT::ENDOFINPUT;
-      break;
-    }
-
-    if (!(evi % 200))
-      cout << "Working on " << evi << " / " << NEvents << endl;
-    Events->GetEntry(evi);
-
-    cname = Events->GetCurrentFile()->GetName();
-    eventid = Events->GetLeaf("eventid")->GetValue();
-    runid = Events->GetLeaf("runid")->GetValue();
-
-    if (pars.intype == MCTREE)
-    {
-      filehash = cname.Hash();
-      while (filehash > INT_MAX - 100000)
-        filehash /= 10;
-      if (filehash < 1000000)
-        filehash += 1000001;
-      runid += filehash;
-    }
-
-    ++evi;
-    break;
-    // =====================================================
   default:
     cerr << "Unknown intype " << pars.intype << endl;
     return EVENTRESULT::PROBLEM;
@@ -524,7 +420,7 @@ EVENTRESULT ppAnalysis::RunEvent()
     sv = (TStarJetVector *)pFullEvent->At(i);
 
     // Ensure kinematic similarity
-    if (sv->Pt() < pars.PtConsMin)
+    if (sv->Pt() < pars.PtConsMin || sv->Pt() > pars.PtConsMax)
       continue;
     if (fabs(sv->Eta()) > pars.EtaConsCut)
       continue;
@@ -536,6 +432,7 @@ EVENTRESULT ppAnalysis::RunEvent()
       double sv_mass = pid->Mass();
       double E = TMath::Sqrt(sv->P() * sv->P() + sv_mass * sv_mass);
       sv->SetPxPyPzE(sv->Px(), sv->Py(), sv->Pz(), E);
+      event_sum_pt += sv->Pt();
     }
 
     //! setting pion mass for charged particles and zero mass for towers
@@ -550,6 +447,7 @@ EVENTRESULT ppAnalysis::RunEvent()
       double E = TMath::Sqrt(sv->P() * sv->P() + sv_mass * sv_mass);
 
       sv->SetPxPyPzE(sv->Px(), sv->Py(), sv->Pz(), E);
+      event_sum_pt += sv->Pt();
     }
 
     // TRACKS
@@ -562,13 +460,6 @@ EVENTRESULT ppAnalysis::RunEvent()
       if (mran > pars.FakeEff)
       {
         continue;
-      }
-      if (SigmaPt)
-      {
-        // cout << sv->Pt() << "  " << SigmaPt->Eval( sv->Pt() ) << endl;
-        SmearPt->SetParameters(1, 0, SigmaPt->Eval(sv->Pt()));
-        double ptscaler = 1 + SmearPt->GetRandom();
-        (*sv) *= ptscaler;
       }
     }
 
@@ -583,31 +474,15 @@ EVENTRESULT ppAnalysis::RunEvent()
     particles.push_back(PseudoJet(*sv));
     particles.back().set_user_info(new JetAnalysisUserInfo(3 * sv->GetCharge(), "", sv->GetTowerID()));
   }
-  // cout << pFullEvent->GetEntries() << "  " <<  particles.size() << endl;
-  // calculate total pT of event
-  totalpT = 0;
-  hardestpT = 0;
-  for (int i = 0; i < particles.size(); ++i)
-  {
-    totalpT += particles[i].perp();
-    if (particles[i].perp() > hardestpT)
-    {
-      hardestpT = particles[i].perp();
-    }
-  }
-  // cout << std::setprecision(99)<< totalpT << endl;
 
+  mult = particles.size();
   if (particles.size() == 0)
     return EVENTRESULT::NOCONSTS;
 
   // For pythia, use cross section as weight
   // ---------------------------------------
-  if (TParameter<double> *sigmaGen = (TParameter<double> *)Events->GetCurrentFile()->Get("sigmaGen"))
-  {
-    weight = sigmaGen->GetVal();
-  }
 
-  if (pars.InputName.Contains("Clean") || pars.InputName.Contains("pt-hat"))
+  if (pars.InputName.Contains("pt-hat"))
   {
     TString currentfile = pReader->GetInputChain()->GetCurrentFile()->GetName();
     weight = LookupRun12Xsec(currentfile);
@@ -631,8 +506,26 @@ EVENTRESULT ppAnalysis::RunEvent()
 
   if (JAResult.size() == 0)
   {
-    // cout << "Nothing found" << endl;
     return EVENTRESULT::NOJETS;
+  }
+
+  // check if the event has high weight or large |vz|
+  if ((pars.InputName.Contains("hat23_") && JAResult[0].perp() > 6.0) ||
+      (pars.InputName.Contains("hat34_") && JAResult[0].perp() > 8.0) ||
+      (pars.InputName.Contains("hat45_") && JAResult[0].perp() > 10.0) ||
+      (pars.InputName.Contains("hat57_") && JAResult[0].perp() > 14.0) ||
+      (pars.InputName.Contains("hat79_") && JAResult[0].perp() > 18.0) ||
+      (pars.InputName.Contains("hat911_") && JAResult[0].perp() > 22.0) ||
+      (pars.InputName.Contains("hat1115_") && JAResult[0].perp() > 30.0) ||
+      (pars.InputName.Contains("hat1520_") && JAResult[0].perp() > 40.0) ||
+      (pars.InputName.Contains("hat2025_") && JAResult[0].perp() > 50.0) ||
+      (pars.InputName.Contains("hat2535_") && JAResult[0].perp() > 70.0) ||
+      (pars.InputName.Contains("hat3545_") && JAResult[0].perp() > 90.0) ||
+      (pars.InputName.Contains("hat4555_") && JAResult[0].perp() > 110.0) ||
+      (pars.InputName.Contains("hat55999_") && JAResult[0].perp() > 1000.0))
+  {
+    is_rejected = true;
+    return EVENTRESULT::NOTACCEPTED;
   }
 
   int njets = JAResult.size();
@@ -643,46 +536,59 @@ EVENTRESULT ppAnalysis::RunEvent()
     PseudoJet &CurrentJet = JAResult[ijet];
     PseudoJet NeutralPart = join(OnlyNeutral(CurrentJet.constituents()));
     PseudoJet ChargedPart = join(OnlyCharged(CurrentJet.constituents()));
+
+    double jetptne = 0.0;
+    double jetpttot = 0.0;
     double q = 0;
     for (PseudoJet &c : ChargedPart.constituents())
     {
-      q += c.user_info<JetAnalysisUserInfo>().GetQuarkCharge();
+      q += c.user_info<JetAnalysisUserInfo>().GetQuarkCharge() / 3.0;
     }
 
-    JetAnalysisUserInfo *userinfo = new JetAnalysisUserInfo(q);
+    for (PseudoJet &n : NeutralPart.constituents())
+    {
+      jetptne += n.perp();
+    }
+
+    for (PseudoJet &part : CurrentJet.constituents())
+    {
+      jetpttot += part.perp();
+    }
+
+    JetAnalysisUserInfo *userinfo = new JetAnalysisUserInfo();
     // Save neutral energy fraction in multi-purpose field
-    userinfo->SetNumber(NeutralPart.pt() / CurrentJet.pt());
+    userinfo->SetNumber(jetptne / jetpttot);
     CurrentJet.set_user_info(userinfo);
 
-    if (pars.MaxJetNEF < 1.0 && NeutralPart.pt() / CurrentJet.pt() > pars.MaxJetNEF)
+    if (pars.MaxJetNEF < 1.0 && jetptne / jetpttot > pars.MaxJetNEF)
       continue;
 
-    vector<PseudoJet> constituents = sorted_by_pt(CurrentJet.constituents());
-    int nparticles = CurrentJet.constituents().size();
-    if (nparticles == 0)
-      continue;
-    float pTlead = constituents[0].pt();
-    double pT_lead0 = 0;
-    double pT_lead3 = 0;
-    double pT_lead5 = 0;
-    double pT_lead7 = 0;
-    if (pTlead > 0)
-    {
-      pT_lead0 = CurrentJet.pt();
-    }
-    if (pTlead > 3)
-    {
-      pT_lead3 = CurrentJet.pt();
-    }
-    if (pTlead > 5)
-    {
-      pT_lead5 = CurrentJet.pt();
-    }
-    if (pTlead > 7)
-    {
-      pT_lead7 = CurrentJet.pt();
-    }
-    Result.push_back(ResultStruct(CurrentJet, pT_lead0, pT_lead3, pT_lead5, pT_lead7));
+    // vector<PseudoJet> constituents = sorted_by_pt(CurrentJet.constituents());
+    // int nparticles = CurrentJet.constituents().size();
+    // if (nparticles == 0)
+    //   continue;
+    // float pTlead = constituents[0].pt();
+    // double pT_lead0 = 0;
+    // double pT_lead3 = 0;
+    // double pT_lead5 = 0;
+    // double pT_lead7 = 0;
+    // if (pTlead > 0)
+    // {
+    //   pT_lead0 = CurrentJet.pt();
+    // }
+    // if (pTlead > 3)
+    // {
+    //   pT_lead3 = CurrentJet.pt();
+    // }
+    // if (pTlead > 5)
+    // {
+    //   pT_lead5 = CurrentJet.pt();
+    // }
+    // if (pTlead > 7)
+    // {
+    //   pT_lead7 = CurrentJet.pt();
+    // }
+    Result.push_back(ResultStruct(CurrentJet));
   }
   // By default, sort for original jet pt
   sort(Result.begin(), Result.end(), ResultStruct::origptgreater);
@@ -708,13 +614,6 @@ void InitializeReader(std::shared_ptr<TStarJetPicoReader> pReader, const TString
     reader.SetFractionHadronicCorrection(HadronicCorr);
     reader.SetApplyMIPCorrection(kFALSE);
     reader.SetRejectTowerElectrons(kFALSE);
-  }
-
-  // Run 11: Use centrality cut
-  if (InputName.Contains("NPE"))
-  {
-    TStarJetPicoEventCuts *evCuts = reader.GetEventCuts();
-    evCuts->SetReferenceCentralityCut(6, 8); // 6,8 for 0-20%
   }
 
   reader.Init(NEvents);
@@ -754,13 +653,6 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pa
   // Do it by hand later on, using pars.ManualHtCut;
   // Also doesn't work for general trees, but there it can't be fixed
 
-  // // TESTING ONLY:
-  // evCuts->SetMaxEventPtCut ( 20000000. );
-  // evCuts->SetMaxEventEtCut ( 20000000. );
-  // evCuts->SetReferenceCentralityCut (  6, 8 ); // 6,8 for 0-20%
-  // evCuts->SetMinEventEtCut ( -1.0 );
-  // evCuts->SetMinEventEtCut ( 6.0 );
-
   // Tracks cuts
   TStarJetPicoTrackCuts *trackCuts = reader.GetTrackCuts();
   trackCuts->SetDCACut(pars.DcaCut);
@@ -785,10 +677,9 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pa
   // V0s: Turn off
   reader.SetProcessV0s(false);
 
-  // cout << "towerCuts=" << towerCuts << endl;
-  // cout << "trackCuts=" << trackCuts << endl;
   return pReader;
 }
+
 //----------------------------------------------------------------------
 void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader)
 {
@@ -796,14 +687,15 @@ void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader)
   pReader->SetProcessTowers(false);
   TStarJetPicoEventCuts *evCuts = pReader->GetEventCuts();
   evCuts->SetTriggerSelection("All"); // All, MB, HT, pp, ppHT, ppJP
-  // No Additional cuts -- but keep the Vz cut
-  // evCuts->SetVertexZCut ( 30 );
-  // evCuts->SetVertexZCut (99999);
+  evCuts->SetVertexZCut(999);
   evCuts->SetRefMultCut(0);
   evCuts->SetVertexZDiffCut(999999);
 
   evCuts->SetMaxEventPtCut(99999);
   evCuts->SetMaxEventEtCut(99999);
+  // evCuts->SetMinEventPtCut (-1);
+  evCuts->SetMinEventEtCut(-1);
+
   evCuts->SetPVRankingCutOff(); //  Use SetPVRankingCutOff() to turn off vertex ranking cut.  default is OFF
 
   // Tracks cuts
@@ -823,27 +715,36 @@ void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader)
 //----------------------------------------------------------------------
 double LookupRun12Xsec(TString filename)
 {
+  //   (pthatrange)  nevents  weighted-Xsection
+  //   2, 3,       2409849,           9.00176
+  //   3, 4,       3706843,           1.46259
+  //   4, 5,       3709985,          0.354407
+  //   5, 7,       3563592,          0.151627
+  //   7, 9,       3637343,         0.0249102
+  //   9,11,      17337984,        0.00584656
+  //  11,15,      17233020,         0.0023021
+  //  15,20,      16422119,       0.000342608
+  //  20,25,       3547865,       4.56842e-05
+  //  25,35,       2415179,       9.71569e-06
+  //  35,45,       2525739,       4.69593e-07
+  //  45,55,       1203188,       2.69062e-08
+  //  55,99,       1264931,       1.43197e-09
 
   const int NUMBEROFPT = 13;
   // const char *PTBINS[NUMBEROFPT]={"2_3","3_4","4_5","5_7","7_9","9_11","11_15","15_20","20_25","25_35","35_-1"};
   const static float XSEC[NUMBEROFPT] = {9.0012, 1.46253, 0.354566, 0.151622, 0.0249062, 0.00584527, 0.00230158, 0.000342755, 4.57002e-05, 9.72535e-06, 4.69889e-07, 2.69202e-08, 1.43453e-09};
   const static float NUMBEROFEVENT[NUMBEROFPT] = {3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 2e6, 2e6, 1e6, 1e6};
-
   const static vector<string> vptbins = {"pt-hat23_", "pt-hat34_", "pt-hat45_", "pt-hat57_", "pt-hat79_", "pt-hat911_", "pt-hat1115_", "pt-hat1520_", "pt-hat2025_", "pt-hat2535_", "pt-hat3545_", "pt-hat4555_", "pt-hat55999_"};
   for (int i = 0; i < vptbins.size(); ++i)
   {
     if (filename.Contains(vptbins.at(i).data()))
       return XSEC[i] / NUMBEROFEVENT[i];
   }
-
   throw std::runtime_error("Not a valid filename");
   return -1;
 }
 
 //----------------------------------------------------------------------
-/*
-    convenient output
-*/
 ostream &operator<<(ostream &ostr, const PseudoJet &jet)
 {
   if (jet == 0)
