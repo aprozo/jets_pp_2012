@@ -1,0 +1,12 @@
+grep: /star/embed/log/Pythia6_pt11_15_202_20235003/log/st_zerobias_adc_13065060_raw_2580001.log: Permission denied
+grep: /star/embed/log/Pythia6_pt11_15_203_20235003/log/st_zerobias_adc_13048088_raw_4600001.log: Permission denied
+grep: /star/embed/log/Pythia6_pt11_15_205_20235003/log/st_zerobias_adc_13053028_raw_5580001.log: Permission denied
+grep: /star/embed/log/Pythia6_pt11_15_205_20235003/log/st_zerobias_adc_13062006_raw_1600001.log: Permission denied
+grep: /star/embed/log/Pythia6_pt11_15_205_20235003/log/st_zerobias_adc_13070011_raw_1580001.log: Permission denied
+grep: /star/embed/log/Pythia6_pt11_15_206_20235003/log/st_zerobias_adc_13052011_raw_3570001.log: Permission denied
+grep: /star/embed/log/Pythia6_pt11_15_206_20235003/log/st_zerobias_adc_13064057_raw_3570001.log: Permission denied
+grep: /star/embed/log/Pythia6_pt11_15_206_20235003/log/st_zerobias_adc_13070025_raw_3600001.log: Permission denied
+grep: /star/embed/log/Pythia6_pt11_15_206_20235003/log/st_zerobias_adc_13070058_raw_3590001.log: Permission denied
+grep: /star/embed/log/Pythia6_pt11_15_208_20235003/log/st_zerobias_adc_13048092_raw_1580001.log: Permission denied
+grep: /star/embed/log/Pythia6_pt11_15_209_20235003/log/st_zerobias_adc_13059015_raw_1590001.log: Permission denied
+
