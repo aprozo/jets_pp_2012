@@ -10,10 +10,10 @@
 # ./bin/RunppAna -i /gpfs01/star/pwg/elayavalli/ppRun12Datapicos/ppRun12Embpicos/Cleanpp12Pico_pt11_15_g4.root -intype pico -c JetTree -trig ppJP2 -o Results/test_geant_pt11_15_g4.root -N 100 -pj 1 2000 -pc 0.2 30 -lja antikt -ec 1 -R 0.4 -hadcorr 0.9999999
 
 # ./bin/RunppAna -i /gpfs01/star/pwg/elayavalli/ppRun12Datapicos/ppRun12Embpicos/Cleanpp12Pico_pt11_15_g4.root -intype mcpico -c JetTreeMc -trig all -o Results/test_pythia_pt11_15_g4.root -N 100 -pj 1 2000 -pc 0.2 1000 -lja antikt -ec 1 -R 0.4
-singularity exec -e \
-    -B $PWD star_star.simg \
-    bash ./container.sh output/test/pt-hat2535_35.root geant
-
 # singularity exec -e \
 #     -B $PWD star_star.simg \
-#     bash ./container_matching_mc_reco.sh output/mc/tree_pt-hat23_33.root matching_test_tree.root
+#     bash ./container.sh output/test/pt-hat2535_35.root geant
+
+singularity exec -e \
+    -B $PWD star_star.simg \
+    bash ./container_matching_mc_reco.sh output/test/tree_pt-hat79_19_mc.root matching_test_tree.root
