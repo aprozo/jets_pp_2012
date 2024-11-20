@@ -1,5 +1,4 @@
-//! HAS to be compiled,
-//! root -l macros/PrepUnfolding.cxx+
+//! Code to read in geant + pythia output trees and match them
 
 #include <TF1.h>
 #include <TH1.h>
@@ -9,6 +8,7 @@
 #include <TProfile.h>
 #include <TLine.h>
 
+#include <TROOT.h>
 #include <TLorentzVector.h>
 #include <TCanvas.h>
 #include <TStyle.h>
@@ -21,11 +21,15 @@
 #include <TMath.h>
 #include <TRandom.h>
 #include <TSystem.h>
+#include <TGraph.h>
 
-#include "/usr/local/eventStructuredAu/TStarJetVector.h"
-#include "/usr/local/eventStructuredAu/TStarJetVectorJet.h"
+#include <TStarJetVector.h>
+#include <TStarJetVectorJet.h>
+#include <TStarJetPicoReader.h>
 
 #include <iostream>
+#include <fstream>
+#include <random>
 #include <vector>
 #include <string>
 #include <set>
@@ -34,15 +38,38 @@
 
 using namespace std;
 
-struct myJet
+struct JetWithInfo
 {
     TStarJetVectorJet orig;
-    double pt;
+    int n_constituents;
+    int event_id;
     double weight;
-    myJet(TStarJetVectorJet orig, double pt, double weight) : orig(orig), pt(pt), weight(weight) {};
+    double multiplicity;
+    bool is_rejected;
+    double pt;
+    double eta;
+    double phi;
+    double neutral_fraction;
+    double vz;
+
+    JetWithInfo(TStarJetVectorJet _orig, int n_constituents,
+                int _event_id, double _weight, double _multiplicity,
+                bool _is_rejected, double _neutral_fraction, double _vz) : orig(_orig),
+                                                                           n_constituents(n_constituents),
+                                                                           event_id(_event_id),
+                                                                           weight(_weight),
+                                                                           multiplicity(_multiplicity),
+                                                                           is_rejected(_is_rejected),
+                                                                           neutral_fraction(_neutral_fraction),
+                                                                           vz(_vz)
+    {
+        pt = orig.Pt();
+        eta = orig.Eta();
+        phi = orig.Phi();
+    };
 };
 
-typedef pair<myJet, myJet> matchedJet;
+typedef pair<JetWithInfo, JetWithInfo> MatchedJetWithInfo;
 
 struct InputTreeEntry
 {
@@ -50,12 +77,27 @@ struct InputTreeEntry
     {
         jets = new TClonesArray("TStarJetVectorJet", 1000);
     }
-    int eventid;
+
+    ~InputTreeEntry()
+    {
+        delete jets;
+    }
+
     int runid;
+    int runid1;
+    int eventid;
     double weight;
+    double refmult;
     int njets;
+    double vz;
+    int mult;
+    float event_sum_pt;
+    bool is_rejected;
     TClonesArray *jets;
-    double totalpT;
+    double neutral_fraction[1000];
+    double pt[1000];
+    int n_constituents[1000];
+    int index[1000];
 };
 
 TTree *initTree(InputTreeEntry &treeEntry, TString name)
@@ -67,17 +109,47 @@ TTree *initTree(InputTreeEntry &treeEntry, TString name)
     inputTree->SetBranchAddress("Jets", &treeEntry.jets);
     inputTree->SetBranchAddress("eventid", &treeEntry.eventid);
     inputTree->SetBranchAddress("runid", &treeEntry.runid);
+    inputTree->SetBranchAddress("runid1", &treeEntry.runid1);
     inputTree->SetBranchAddress("weight", &treeEntry.weight);
+    inputTree->SetBranchAddress("refmult", &treeEntry.refmult);
     inputTree->SetBranchAddress("njets", &treeEntry.njets);
-    inputTree->SetBranchAddress("totalpT", &treeEntry.totalpT);
+    inputTree->SetBranchAddress("vz", &treeEntry.vz);
+    inputTree->SetBranchAddress("mult", &treeEntry.mult);
+    inputTree->SetBranchAddress("event_sum_pt", &treeEntry.event_sum_pt);
+    inputTree->SetBranchAddress("is_rejected", &treeEntry.is_rejected);
+    inputTree->SetBranchAddress("neutral_fraction", treeEntry.neutral_fraction);
+    inputTree->SetBranchAddress("pt", treeEntry.pt);
+    inputTree->SetBranchAddress("n_constituents", treeEntry.n_constituents);
+    inputTree->SetBranchAddress("index", treeEntry.index);
     return inputTree;
 }
 
 struct OutputTreeEntry
 {
+    OutputTreeEntry() {}
+    OutputTreeEntry(const JetWithInfo &jet)
+    {
+        n_constituents = jet.n_constituents;
+        event_id = jet.event_id;
+        weight = jet.weight;
+        multiplicity = jet.multiplicity;
+        is_rejected = jet.is_rejected;
+        pt = jet.pt;
+        eta = jet.eta;
+        phi = jet.phi;
+        neutral_fraction = jet.neutral_fraction;
+        vz = jet.vz;
+    }
+    int n_constituents;
+    int event_id;
     double weight;
+    double multiplicity;
+    bool is_rejected;
     double pt;
-    double deltaR;
+    double eta;
+    double phi;
+    double neutral_fraction;
+    double vz;
 };
 
 TTree *createTree(OutputTreeEntry &entry, TString name)
@@ -85,16 +157,37 @@ TTree *createTree(OutputTreeEntry &entry, TString name)
     TTree *outTree = new TTree(name, name);
     outTree->Branch("weight", &entry.weight);
     outTree->Branch("pt", &entry.pt);
+    outTree->Branch("eta", &entry.eta);
+    outTree->Branch("phi", &entry.phi);
+    outTree->Branch("n_constituents", &entry.n_constituents);
+    outTree->Branch("event_id", &entry.event_id);
+    outTree->Branch("multiplicity", &entry.multiplicity);
+    outTree->Branch("is_rejected", &entry.is_rejected);
+    outTree->Branch("neutral_fraction", &entry.neutral_fraction);
+    outTree->Branch("vz", &entry.vz);
     return outTree;
 }
 
-TTree *createTree(OutputTreeEntry &mc, OutputTreeEntry &reco, TString name)
+TTree *createTree(OutputTreeEntry &mc, OutputTreeEntry &reco, double &deltaR, TString name)
 {
     TTree *outTree = new TTree(name, name);
-    outTree->Branch("weight", &reco.weight);
-    outTree->Branch("ptMc", &mc.pt);
-    outTree->Branch("ptReco", &reco.pt);
-    outTree->Branch("deltaR", &mc.deltaR);
+    outTree->Branch("deltaR", &deltaR);
+    outTree->Branch("mc_weight", &mc.weight);
+    outTree->Branch("reco_weight", &reco.weight);
+    outTree->Branch("mc_pt", &mc.pt);
+    outTree->Branch("reco_pt", &reco.pt);
+    outTree->Branch("mc_n_constituents", &mc.n_constituents);
+    outTree->Branch("reco_n_constituents", &reco.n_constituents);
+    outTree->Branch("mc_event_id", &mc.event_id);
+    outTree->Branch("reco_event_id", &reco.event_id);
+    outTree->Branch("mc_multiplicity", &mc.multiplicity);
+    outTree->Branch("reco_multiplicity", &reco.multiplicity);
+    outTree->Branch("mc_is_rejected", &mc.is_rejected);
+    outTree->Branch("reco_is_rejected", &reco.is_rejected);
+    outTree->Branch("mc_neutral_fraction", &mc.neutral_fraction);
+    outTree->Branch("reco_neutral_fraction", &reco.neutral_fraction);
+    outTree->Branch("mc_vz", &mc.vz);
+    outTree->Branch("reco_vz", &reco.vz);
     return outTree;
 }
 
@@ -106,9 +199,9 @@ TTree *createTree(OutputTreeEntry &mc, OutputTreeEntry &reco, TString name)
 // 5. Go back to step 3 until the list of pairs is empty.
 // Main algorithm for matching mcJets and recoJets
 
-void matchJets(const std::vector<myJet> &mcJets, const std::vector<myJet> &recoJets,
+void matchJets(const std::vector<JetWithInfo> &mcJets, const std::vector<JetWithInfo> &recoJets,
                std::vector<std::pair<int, int>> &matches,
-               std::vector<int> &misses, std::vector<int> &fakes, double deltaRMax = 0.2)
+               std::vector<int> &misses, std::vector<int> &fakes, double deltaRMax = 0.3)
 {
     std::vector<bool> mcMatched(mcJets.size(), false);
     std::vector<bool> recoMatched(recoJets.size(), false);
@@ -130,7 +223,11 @@ void matchJets(const std::vector<myJet> &mcJets, const std::vector<myJet> &recoJ
                 if (recoMatched[j])
                     continue; // Skip already matched recoJet
 
-                double deltaR = mcJets[i].orig.DeltaR(recoJets[j].orig);
+                // double deltaR = mcJets[i].orig.DeltaR(recoJets[j].orig);
+                double deta = mcJets[i].orig.Rapidity() - recoJets[j].orig.Rapidity();
+                double dphi = TVector2::Phi_mpi_pi( mcJets[i].orig.Phi() - recoJets[j].orig.Phi() );
+                double deltaR = TMath::Sqrt(deta * deta + dphi * dphi);
+
                 // cout << "DeltaR: " << deltaR << endl;
                 if (deltaR < minDeltaR)
                 {
@@ -176,36 +273,13 @@ void matchJets(const std::vector<myJet> &mcJets, const std::vector<myJet> &recoJ
     //
 }
 
-int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", TString outFileName = "output/matching.root")
+int matching_mc_reco(TString mcTreeName = "", TString outFileName = "test_matching.root")
 {
-    TString mcBaseName = mcTreeName(mcTreeName.Last('/') + 1, mcTreeName.Length());
-
-    TString mcFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/mc/";
-    TString recoFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/geant/";
-
-    // TSting recoFolder = recoTreeName(0, recoTreeName.Last('/') + 1);
-    // TSting mcFolder = mcTreeName(0, mcTreeName.Last('/') + 1);
-    TString recoTreeName = recoFolder + mcBaseName;
-    mcTreeName=mcFolder+mcBaseName;
-    // recoTreeName = "output/tree_pt-hat2025_41.root";
-    // check if file exists
-    if (gSystem->AccessPathName(recoTreeName) || gSystem->AccessPathName(mcTreeName))
-    {
-        cerr << "File " << recoTreeName << " does not exist" << endl;
-        return -1;
-    }
-
-
-    
-
-    const int maxEvents = 0;
     const float jetRad = 0.4;
     float EtaCut = 1.0 - jetRad;
-    // Set Minimum Constituent pt
-    double ConMinPt = 0.2;
-    const double mcJetMinPt = 3;   // GeV
-    const double recoJetMinPt = 5; // GeV
-    const double deltaRMax = 0.2;
+    const double mcJetMinPt = 5;   // GeV
+    const double recoJetMinPt = 10; // GeV
+    const double deltaRMax = 0.4;
 
     int MatchNumber = 0;
     int FakeNumber = 0;
@@ -214,316 +288,213 @@ int matching_mc_reco(TString mcTreeName = "output/tree_pt-hat2025_41_mc.root", T
     int MatchedGeantEventNumber = 0;
     int TotalGeantEventNumber = 0;
     int FakeEventNumber = 0;
+    // =================================================================================================
+    TString mcBaseName = mcTreeName(mcTreeName.Last('/') + 1, mcTreeName.Length());
+    TString mcFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/mc/";
+    TString recoFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/geant/";
+    TString recoTreeName = recoFolder + mcBaseName;
+    mcTreeName = mcFolder + mcBaseName;
 
-    // Set up Trees
-    InputTreeEntry inputMc;
-    TClonesArray *mcJets = inputMc.jets;
+    // mcTreeName = "output/test/tree_pt-hat79_19_mc.root";
+    // recoTreeName = "output/test/tree_pt-hat79_19_geant.root";
 
-    InputTreeEntry inputReco;
-    TClonesArray *recoJets = inputReco.jets;
+    // =================================================================================================
+    InputTreeEntry mc;
+    InputTreeEntry reco;
+    TTree *mcTree = initTree(mc, mcTreeName);
+    TTree *recoTree = initTree(reco, recoTreeName);
+    // =================================================================================================
 
-    TTree *mcTree = initTree(inputMc, mcTreeName);
-    TTree *recoTree = initTree(inputReco, recoTreeName);
-
-    // new from Isaac
-    const int NUMBEROFPT = 13;
-    const static float XSEC[NUMBEROFPT] = {0.00230158, 0.000342755, 0.0000457002, 9.0012, .00000972535, 1.46253, 0.000000469889, 0.354566, 0.0000000269202, 0.00000000143453, 0.151622, 0.0249062, 0.00584527};
-    const static float NUMBEROFEVENT[NUMBEROFPT] = {3000000, 3000000, 3000000, 3000000, 2000000, 3000000, 2000000, 3000000, 1000000, 1000000, 3000000, 3000000, 3000000};
-    const static float MAXPT[NUMBEROFPT] = {30, 40, 50, 6, 70, 8, 90, 10, 110, 2000, 14, 18, 22};
-    const static vector<string> vptbins = {"1115_", "1520_", "2025_", "23_", "2535_", "34_", "3545_", "45_", "4555_", "55999_", "57_", "79_", "911_"};
-    // Truth and Measured Jet Bounds are the same for now
-    int MeasJetBins = 10;
-    double MeasJetBounds[11] = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60};
-    int TruthJetBins = 10;
-    double TruthJetBounds[11] = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60};
-    // Output and histograms
     TFile *fout = new TFile(outFileName, "RECREATE");
-
-    // SetUp Output Trees
-    OutputTreeEntry reco;
-    OutputTreeEntry mc;
-
-    TTree *MatchTree = createTree(mc, reco, "MatchTree");
-    TTree *FakeTree = createTree(reco, "FakeTree");
-    TTree *MissTree = createTree(mc, "MissTree");
+    OutputTreeEntry reco_result;
+    OutputTreeEntry mc_result;
+    double deltaR;
+    TTree *MatchTree = createTree(mc_result, reco_result, deltaR, "MatchTree");
+    TTree *FakeTree = createTree(reco_result, "FakeTree");
+    TTree *MissTree = createTree(mc_result, "MissTree");
+    // =================================================================================================
+    //   histograms
+    TH1::SetDefaultSumw2();
+    TH2::SetDefaultSumw2();
+    gStyle->SetOptStat(0);
 
     TH1D *hDeltaR = new TH1D("hDeltaR", "#Delta R all; #Delta R", 350, 0, 3.5);
     TH1D *hPtMc = new TH1D("hPtMc", "Mc p_{t}; p_{t}, GeV/c", 500, 0, 50);
     TH1D *hPtReco = new TH1D("hPtReco", "Reco p_{t}; p_{t}, GeV/c", 500, 0, 50);
     TH2D *hPtMcReco = new TH2D("hPtMcReco", "Mc p_{t} vs Reco p_{t}; Mc p_{t}, GeV/c; Reco p_{t}, GeV/c", 500, 0, 50, 500, 0, 50);
-    TH1D *hDeltaRMatched = new TH1D("hDeltaRMatched", "#Delta R matched; #Delta R", 100, 0, 0.5);
     TH2D *hNJets = new TH2D("hNJets", "; Number of Mc jets; Number of Reco jets", 20, 0, 20, 20, 0, 20);
     TH1D *hMissedJets = new TH1D("hMissedJets", "Missed Jets; Events", 10, 0, 10);
     TH1D *hFakeJets = new TH1D("hFakeJets", "Fake Jets; Events", 20, 0, 20);
     TH1D *hMatchedJets = new TH1D("hMatchedJets", "Matched Jets; Events", 20, 0, 20);
-    TH2D *hMatchedMissed = new TH2D("hMatchedMissed", "Matched vs Missed; Missed; Matched", 20, 0, 20, 10, 0, 10);
-    TH2D *hMatchedFake = new TH2D("hMatchedFake", "Matched vs Fake; Fake; Matched", 20, 0, 20, 10, 0, 10);
 
-    //================================================================================================
-    // Begin Looping over MC events
-    //================================================================================================
+    TH1D *hMissRate = new TH1D("hMissRate", "Miss Rate; p_{t}, GeV/c", 500, 0, 50);
+    TH1D *hFakeRate = new TH1D("hFakeRate", "Fake Rate; p_{t}, GeV/c", 500, 0, 50);
 
-    int nEventsMc = mcTree->GetEntries();
-    vector<int> recoEventNumbers;
+    TH1D *stats = new TH1D("stats", "stats", 4, 0, 4);
+    stats->GetXaxis()->SetBinLabel(1, "Match");
+    stats->GetXaxis()->SetBinLabel(2, "Miss");
+    stats->GetXaxis()->SetBinLabel(3, "Fake");
+    stats->GetXaxis()->SetBinLabel(4, "Miss(no geant)");
+    //! =================================================================================================
+    int N = mcTree->GetEntries();
+    cout << "Number of Pythia events: " << N << endl;
+    cout << "Number of Geant events:  " << recoTree->GetEntries() << endl;
 
-    for (Long64_t iEvent = 0; iEvent < nEventsMc; ++iEvent)
+    set<float> mc_accepted_events_list;
+    set<float> reco_list;
+
+    for (Long64_t mcEvent = 0; mcEvent < N; ++mcEvent) // event loop
     {
-        if (maxEvents > 0 && iEvent > maxEvents)
-        {
-            break;
-        }
-        if (!(iEvent % 10000))
-            cout << "Working on " << iEvent << " / " << nEventsMc << endl;
-        mcTree->GetEntry(iEvent);
-
-        if (mcJets->GetEntries() != inputMc.njets)
-        {
-            cerr << "mcJets->GetEntries() != inputMc.njets" << endl;
-            return -1;
-        }
-
-        vector<myJet> myMcJets;
-        for (auto j = 0; j < mcJets->GetEntries(); ++j)
-        { // get the values for the current jet
-            TStarJetVectorJet *jet = (TStarJetVectorJet *)mcJets->At(j);
-            //! Fill in jet into pythia result
-            if (fabs(jet->Eta()) < EtaCut && jet->Pt() > mcJetMinPt)
-            {
-                myMcJets.push_back(myJet(*jet, jet->GetSumConstituentsPt(), inputMc.weight));
-            }
-        }
-        // cout << "======================" << endl;
-        // cout << "======================" << endl;
-        if (myMcJets.size() == 0)
-        {
+        if (!(mcEvent % 500000))
+            cout << "Working on " << mcEvent << " / " << N << endl;
+        mcTree->GetEntry(mcEvent);
+        if (mc.is_rejected || abs(mc.vz) > 30) // skip bad events with high weights
             continue;
-        } // skip this event
-        // Still in MC level loop, get matching Geant Event
-        Long64_t recoEvent =-1;
-        recoEvent = recoTree->GetEntryNumberWithIndex(inputMc.runid, inputMc.eventid);
+        if (mc_accepted_events_list.find(mc.event_sum_pt) != mc_accepted_events_list.end())
+            continue; // some events have identical total particle pT
+        else
+            mc_accepted_events_list.insert(mc.event_sum_pt);
 
-        if (recoEvent >= 0)
-        {
-            recoEventNumbers.push_back(recoEvent);
-            MatchedGeantEventNumber++;
-        }
-        double mcTotalPt = inputMc.totalpT;
+               double mcTotalPt = mc.event_sum_pt;
         // bug in new embedding
         if (mcTotalPt > 23.11003 && mcTotalPt < 23.11004)
-        {
-            continue;
-        } // 11-15
+            continue; // 11-15
         if (mcTotalPt > 33.749385 && mcTotalPt < 33.749405)
-        {
-            continue;
-        } // 15-20
+            continue; // 15-20
         if (mcTotalPt > 47.09071 && mcTotalPt < 47.09072)
-        {
-            continue;
-        } // 20-25
+            continue; // 20-25
         if (mcTotalPt > 9.62226 && mcTotalPt < 9.62227)
-        {
-            continue;
-        } // 2-3
+            continue; // 2-3
         if (mcTotalPt > 46.63831 && mcTotalPt < 46.63832)
-        {
-            continue;
-        } // 25-35
+            continue; // 25-35
         if (mcTotalPt > 6.90831 && mcTotalPt < 6.90832)
-        {
-            continue;
-        } // 3-4
+            continue; // 3-4
         if (mcTotalPt > 82.68752 && mcTotalPt < 82.68753)
-        {
-            continue;
-        } // 35-45
+            continue; // 35-45
         if (mcTotalPt > 100.25616 && mcTotalPt < 100.25617)
-        {
-            continue;
-        } // 45-55
+            continue; // 45-55
         if (mcTotalPt > 75.10883 && mcTotalPt < 75.10884)
-        {
-            continue;
-        } // 55-999
+            continue; // 55-999
         if (mcTotalPt > 3.75004 && mcTotalPt < 3.75005)
-        {
-            continue;
-        } // 5-7
+            continue; // 5-7
         if (mcTotalPt > 6.47623 && mcTotalPt < 6.47624)
-        {
-            continue;
-        } // 7-9
+            continue; // 7-9
         if (mcTotalPt > 4.22790 && mcTotalPt < 4.22791)
-        {
-            continue;
-        } // 9-11
-
-        // fill in regardless of match/miss to get reference and check which events are candidates for high weight and throw them out
-
-        //  skip events with high weights and high pt jets to avoid bias
+            continue; // 9-11
         //================================================================================================
-        bool isBad = false;
-        int weightBin = -1;
-        double mcweight = inputMc.weight;
-
-        for (unsigned i = 0; i < vptbins.size(); ++i)
+        vector<JetWithInfo> mc_jets;
+        // Loop over mc jets and select jets that satisfy the cuts
+        for (int j = 0; j < mc.njets; ++j)
         {
-            if (mcweight == XSEC[i] / NUMBEROFEVENT[i])
-            {
-                weightBin = i;
-            }
-        }
+            TStarJetVectorJet *mc_jet = (TStarJetVectorJet *)mc.jets->At(j);
+            if (fabs(mc_jet->Eta()) < EtaCut && mc_jet->Pt() > mcJetMinPt)
+                mc_jets.push_back(JetWithInfo(*mc_jet, mc.n_constituents[j], mc.eventid, mc.weight, mc.mult, mc.is_rejected, mc.neutral_fraction[j], mc.vz));
+        } // end of mcjet loop
 
-        
-        for (const auto &jet : myMcJets)
-        {
-            if (jet.orig.Pt() > MAXPT[weightBin])
-            {
-                isBad = true;
-                break;
-            }
-        }
-        if (isBad)
-        {
-            continue;
-        }
-        //================================================================================================
+        int recoEvent = recoTree->GetEntryNumberWithIndex(mc.runid, mc.eventid);
 
-        // matching geant event not found, fill in pythia event as a miss
         if (recoEvent < 0)
         {
-            for (auto jet : myMcJets)
+            for (auto mc_jet : mc_jets)
             {
-                MissEventNumber++;
-                mc.pt = jet.orig.Pt();
-                mc.weight = jet.weight;
-                // if (mc.pt > TruthJetBounds[0] && mc.pt < TruthJetBounds[TruthJetBins])
+                mc_result = OutputTreeEntry(mc_jet);
                 MissTree->Fill();
+                MissEventNumber++;
             }
-        }
-        // Get Geant event if its found
-        recoTree->GetEntry(recoEvent);
-        vector<myJet> myRecoJets;
-        for (int j = 0; j < inputReco.njets; ++j)
-        { // get the values for the current jet
-            TStarJetVectorJet *jet = (TStarJetVectorJet *)recoJets->At(j);
-            //! Fill in jet into pythia result
-            if (fabs(jet->Eta()) < EtaCut && jet->Pt() > recoJetMinPt)
-            {
-                myRecoJets.push_back(myJet(*jet, jet->GetSumConstituentsPt(), inputReco.weight));
-            }
-        }
-
-        for (auto recoJet : myRecoJets)
-        {
-            double Jetpt = recoJet.orig.perp();
-            if (Jetpt > MAXPT[weightBin])
-            {
-                isBad = true;
-                break;
-            }
-        }
-        if (isBad)
-        {
             continue;
         }
 
-        // match and Sort Pythia and Geant jets together
-        int nJetsMc = myMcJets.size();
-        int nJetsReco = myRecoJets.size();
-        int matchedJets = 0;
-        int missedJets = 0;
-        int fakeJets = 0;
+        recoTree->GetEntry(recoEvent);
 
-        for (auto mcJetStruct : myMcJets)
+        if (reco.is_rejected || abs(reco.vz) > 30)
+            continue; // go to next MC event
+
+        MatchedGeantEventNumber++;
+
+        //================================================================================================
+        vector<JetWithInfo> reco_jets;
+        for (int j = 0; j < reco.njets; ++j)
         {
-            TStarJetVectorJet mcJet = mcJetStruct.orig;
-            for (auto recoJetStruct : myRecoJets)
-            {
-                TStarJetVectorJet recoJet = recoJetStruct.orig;
-                hDeltaR->Fill(mcJet.DeltaR(recoJet));
-                hPtReco->Fill(recoJet.perp());
-            }
-            hPtMc->Fill(mcJet.perp());
+            TStarJetVectorJet *reco_jet = (TStarJetVectorJet *)reco.jets->At(j);
+            if (fabs(reco_jet->Eta()) < EtaCut && reco_jet->Pt() > recoJetMinPt)
+                reco_jets.push_back(JetWithInfo(*reco_jet, reco.n_constituents[j], reco.eventid, reco.weight, reco.mult, reco.is_rejected, reco.neutral_fraction[j], reco.vz));
         }
-        hNJets->Fill(nJetsMc, nJetsReco);
+        //================================================================================================
+        hNJets->Fill(mc_jets.size(), reco_jets.size());
 
+        for (auto mc_jet : mc_jets)
+        {
+            TStarJetVectorJet mcJet = mc_jet.orig;
+            hPtMc->Fill(mcJet.Pt());
+            for (auto reco_jet : reco_jets)
+            {
+                TStarJetVectorJet recoJet = reco_jet.orig;
+                hDeltaR->Fill(mcJet.DeltaR(recoJet));
+            }
+        }
+
+        for (auto reco_jet : reco_jets)
+        {
+            TStarJetVectorJet recoJet = reco_jet.orig;
+            hPtReco->Fill(recoJet.Pt());
+        }
+
+        //================================================================================================
+        if (mc_jets.size() == 0)
+            continue;
         std::vector<std::pair<int, int>> matches;
         std::vector<int> misses; // List of unmatched mcJets (Misses)
         std::vector<int> fakes;  // List of unmatched recoJets (Fakes)
 
-        matchJets(myMcJets, myRecoJets, matches, misses, fakes, deltaRMax);
+        matchJets(mc_jets, reco_jets, matches, misses, fakes, deltaRMax);
 
-        if (matches.size() > 0)
-        {
-            hMatchedJets->Fill(matches.size());
-        }
+        hMatchedJets->Fill(matches.size());
 
         for (auto match : matches)
         {
-            auto mcJet = myMcJets[match.first];
-            auto recoJet = myRecoJets[match.second];
-            // delete matched jets from vector
-            mc.pt = mcJet.orig.perp();
-            mc.weight = mcJet.weight;
-            reco.pt = recoJet.orig.perp();
-            reco.weight = recoJet.weight;
-            mc.deltaR = mcJet.orig.DeltaR(recoJet.orig);
-
-            hDeltaRMatched->Fill(mc.deltaR);
-            hPtMcReco->Fill(mc.pt, reco.pt);
-
+            deltaR = mc_jets[match.first].orig.DeltaR(reco_jets[match.second].orig);
+            mc_result = OutputTreeEntry(mc_jets[match.first]);
+            reco_result = OutputTreeEntry(reco_jets[match.second]);
+            hPtMcReco->Fill(mc_result.pt, reco_result.pt);
             MatchTree->Fill();
             MatchNumber++;
         }
-
-        if (misses.size() > 0)
+        //================================================================================================
+        hMissedJets->Fill(misses.size());
+        for (auto miss : misses)
         {
-            hMissedJets->Fill(misses.size());
-            if (matches.size() > 0)
-            {
-                hMatchedMissed->Fill(misses.size(), matches.size());
-            }
-        }
-
-        for (int mcIndex : misses)
-        {
-            auto mcJet = myMcJets[mcIndex];
-            mc.pt = mcJet.orig.perp();
-            mc.weight = mcJet.weight;
+            mc_result = OutputTreeEntry(mc_jets[miss]);
             MissTree->Fill();
+            hMissRate->Fill(mc_result.pt);
             MissNumber++;
         }
-
-        if (fakes.size() > 0)
+        //================================================================================================
+        hFakeJets->Fill(fakes.size());
+        for (auto fake : fakes)
         {
-            hFakeJets->Fill(fakes.size());
-            if (matches.size() > 0)
-            {
-                hMatchedFake->Fill(fakes.size(), matches.size());
-            }
-        }
-
-        for (int recoIndex : fakes)
-        {
-            auto recoJet = myRecoJets[recoIndex];
-            reco.pt = recoJet.orig.perp();
-            reco.weight = recoJet.weight;
+            reco_result = OutputTreeEntry(reco_jets[fake]);
             FakeTree->Fill();
+            hFakeRate->Fill(reco_result.pt);
             FakeNumber++;
         }
+        //================================================================================================
     }
+    cout << "Miss Number is " << MissNumber << endl;
+    cout << "From Missed Events is " << MissEventNumber << endl;
+    cout << "Fake Number is " << FakeNumber << endl;
+    cout << "MatchNumber is " << MatchNumber << endl;
+
+    stats->SetBinContent(1, MatchNumber);
+    stats->SetBinContent(2, MissNumber);
+    stats->SetBinContent(3, FakeNumber);
+    stats->SetBinContent(4, MissEventNumber);
+
+    stats->SetTitle(Form("pt_{mc}>%.1f GeV/c, pt_{reco}>%.1f GeV/c, #Delta R < %.1f", mcJetMinPt, recoJetMinPt, deltaRMax));
+
     fout->cd();
     fout->GetList()->Write();
 
     fout->Close();
 
-    cout << "Miss Number is " << MissNumber << endl;
-    cout << "From Missed Events is " << MissEventNumber << endl;
-    cout << "Fake Number is " << FakeNumber << endl;
-    cout << "From Fake Events is " << FakeEventNumber << endl;
-    cout << "MatchNumber is " << MatchNumber << endl;
-
     return 0;
 }
-// end of function

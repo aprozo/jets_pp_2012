@@ -247,7 +247,7 @@ bool IsMatched(const std::vector<fastjet::PseudoJet> &jetset1, const std::vector
         // done with this one
         break;
       } // if (R<max)
-    } // for jet2
+    }   // for jet2
     // not matched? bad
     if (!j1matched)
       return false;
@@ -268,7 +268,7 @@ bool IsMatched(const std::vector<fastjet::PseudoJet> &jetset1, const fastjet::Ps
     {
       return true;
     } // if (R<max)
-  } // for jet1
+  }   // for jet1
 
   return false;
 }

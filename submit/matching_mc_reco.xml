@@ -11,7 +11,7 @@
         # put your script here, with filename as input file
         echo $filename
         echo "starting singularity"
-        singularity exec -e -B $SCRATCH -B /gpfs01 star_star.simg bash container_matching_mc_reco.sh $filename $FILEBASENAME.root
+        singularity exec -e -B $SCRATCH -B /gpfs01 star_star.simg bash container_matching_mc_reco.sh $filename matched$FILEBASENAME.root
         @ nFile++
         end
 
@@ -37,7 +37,9 @@
         <Package name="run12ana">
             <File>file:./star_star.simg</File>
             <File>file:./container_matching_mc_reco.sh</File>
+            <File>file:./macros/MatchGeantToPythia.cxx</File>
             <File>file:./macros/matching_mc_reco.cxx</File>
+
         </Package>
     </SandBox>
 

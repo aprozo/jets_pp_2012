@@ -29,6 +29,9 @@ mc)
     treeType="JetTreeMc"
     picoType="mcpico"
     ;;
+geant)
+    jet_min_pt=10
+    ;;
 esac
 
 # Display the input and output file information
@@ -43,7 +46,7 @@ args=(
     -trig "$trigger"
     -o "tree_$output_file"
     -N -1
-    -pj 0.001 2000
+    -pj $jet_min_pt 2000
     -pc 0.2 30
     -lja "antikt"
     -ec 1
@@ -55,6 +58,10 @@ if [[ $data_type == "geant" ]]; then
     args+=(-hadcorr 0.9999999)
     args+=(-towunc 0)
     args+=(-fakeeff 1)
+fi
+
+if [[ $data_type == "mc" ]]; then
+    args+=(-jetnef 1)
 fi
 
 # Execute the analysis command with specified arguments

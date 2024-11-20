@@ -472,7 +472,7 @@ EVENTRESULT ppAnalysis::RunEvent()
     }
 
     particles.push_back(PseudoJet(*sv));
-    particles.back().set_user_info(new JetAnalysisUserInfo(3 * sv->GetCharge(), "", sv->GetTowerID()));
+    particles.back().set_user_info(new JetAnalysisUserInfo(3 * sv->GetCharge(), sv->mc_pdg_pid(), "", sv->GetTowerID()));
   }
 
   mult = particles.size();
@@ -740,7 +740,7 @@ double LookupRun12Xsec(TString filename)
     if (filename.Contains(vptbins.at(i).data()))
       return XSEC[i] / NUMBEROFEVENT[i];
   }
-  throw std::runtime_error("Not a valid filename");
+
   return -1;
 }
 

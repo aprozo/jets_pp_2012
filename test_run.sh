@@ -16,4 +16,4 @@
 
 singularity exec -e \
     -B $PWD star_star.simg \
-    bash ./container_matching_mc_reco.sh output/test/tree_pt-hat79_19_mc.root matching_test_tree.root
+    bash ./container_matching_mc_reco.sh tree_pt-hat45_010.root matching_test_tree.root

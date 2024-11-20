@@ -732,9 +732,10 @@ double LookupRun12Xsec(TString filename)
   const static vector<string> vptbins = {"pt-hat23_", "pt-hat34_", "pt-hat45_", "pt-hat57_", "pt-hat79_", "pt-hat911_", "pt-hat1115_", "pt-hat1520_", "pt-hat2025_", "pt-hat2535_", "pt-hat3545_", "pt-hat4555_", "pt-hat55999_"};
   for (int i = 0; i < vptbins.size(); ++i)
   {
-    if (filename.Contains(vptbins.at(i).data()))                                                                                           return XSEC[i] / NUMBEROFEVENT[i];
-  }                                                                                                                                                                                                                                                                         throw std::runtime_error("Not a valid filename");
-  return -1;
+    if (filename.Contains(vptbins.at(i).data()))                                                                                          
+     return XSEC[i] / NUMBEROFEVENT[i];
+  }
+    return -1;
 }
 
 //----------------------------------------------------------------------

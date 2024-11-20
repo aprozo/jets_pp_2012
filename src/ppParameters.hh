@@ -25,8 +25,7 @@ enum INTYPE
 };
 
 // Return values for the main routine
-enum class EVENTRESULT
-{
+enum class EVENTRESULT{
   PROBLEM,
   ENDOFINPUT,
   NOTACCEPTED,
@@ -38,8 +37,8 @@ enum class EVENTRESULT
 class ppParameters
 {
 
-public:
-  double R = 0.4; ///< Resolution parameter ("radius").
+public :
+  double R = 0.4;            ///< Resolution parameter ("radius").
 
   /// Jet algorithm for the original jets
   JetAlgorithm LargeJetAlgorithm = fastjet::antikt_algorithm;
@@ -59,11 +58,13 @@ public:
   // int GhostRepeat = 1;
   // float GhostArea = 0.005;    ///< ghost area
 
-  double PtJetMin = 5.0;   ///< Min jet pT || was 5.0
-  double PtJetMax = 200.0; ///< Max jet pT || was 1000.0
-  double LeadPtMin = 5.0;  ///< leading jet minimum p<SUB>T</SUB>
+  // const double PtJetMin = 20.0;    ///< Min jet pT
+  double PtJetMin = 5.0;      ///< Min jet pT
+  double PtJetMax = 1000.0;   ///< Max jet pT
+  double MJetMin = 0.0;
+  //double LeadPtMin=5.0;                 ///< leading jet minimum p<SUB>T</SUB>
 
-  double MaxJetNEF = 0.9; ///< Max neutral energy fraction
+  double MaxJetNEF=0.9;       ///< Max neutral energy fraction
 
   double EtaConsCut = 1.0; ///< Constituent |&eta;| acceptance || was 1.0
   double PtConsMin = 0.2;  ///< Constituent pT minimum || was 0.2
