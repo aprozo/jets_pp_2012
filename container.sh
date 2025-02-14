@@ -16,6 +16,7 @@ make
 trigger="All"
 treeType="JetTree"
 picoType="pico"
+jet_min_pt=5
 
 # Determine trigger type and tree/pico settings based on data_type
 case "$data_type" in

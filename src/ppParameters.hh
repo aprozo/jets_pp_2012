@@ -64,7 +64,7 @@ public :
   double MJetMin = 0.0;
   //double LeadPtMin=5.0;                 ///< leading jet minimum p<SUB>T</SUB>
 
-  double MaxJetNEF=0.9;       ///< Max neutral energy fraction
+  double MaxJetNEF=0.95;       ///< Max neutral energy fraction
 
   double EtaConsCut = 1.0; ///< Constituent |&eta;| acceptance || was 1.0
   double PtConsMin = 0.2;  ///< Constituent pT minimum || was 0.2

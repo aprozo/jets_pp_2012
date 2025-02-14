@@ -1,9 +1,9 @@
 
 #include "ppAnalysis.hh"
-#include <stdlib.h> // for getenv, atof, atoi
-#include <stdio.h>
-#include <iostream>
 #include <fstream>
+#include <iostream>
+#include <stdio.h>
+#include <stdlib.h> // for getenv, atof, atoi
 #include <string>
 
 using std::cerr;
@@ -11,218 +11,158 @@ using std::cout;
 using std::endl;
 
 // Standard ctor
-ppAnalysis::ppAnalysis(const int argc, const char **const argv)
-{
+ppAnalysis::ppAnalysis(const int argc, const char **const argv) {
   // Parse arguments
   // ---------------
   vector<string> arguments(argv + 1, argv + argc);
   bool argsokay = true;
   bool forcedgeantnum = false;
   NEvents = -1;
-  for (auto parg = arguments.begin(); parg != arguments.end(); ++parg)
-  {
+  for (auto parg = arguments.begin(); parg != arguments.end(); ++parg) {
     string arg = *parg;
-    if (arg == "-R")
-    {
-      if (++parg == arguments.end())
-      {
+    if (arg == "-R") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.R = atof(parg->data());
-    }
-    else if (arg == "-lja")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-lja") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.LargeJetAlgorithm = AlgoFromString(*parg);
-    }
-    else if (arg == "-pj")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-pj") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.PtJetMin = atof((parg)->data());
-      if (++parg == arguments.end())
-      {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.PtJetMax = atof((parg)->data());
-    }
-    else if (arg == "-ec")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-ec") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.EtaConsCut = atof((parg)->data());
-    }
-    else if (arg == "-pc")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-pc") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.PtConsMin = atof((parg)->data());
-      if (++parg == arguments.end())
-      {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.PtConsMax = atof((parg)->data());
-    }
-    else if (arg == "-hadcorr")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-hadcorr") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.HadronicCorr = atof(parg->data());
-    }
-    else if (arg == "-o")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-o") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.OutFileName = *parg;
-    }
-    else if (arg == "-i")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-i") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.InputName = *parg;
-    }
-    else if (arg == "-c")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-c") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.ChainName = *parg;
-    }
-    else if (arg == "-trig")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-trig") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.TriggerName = *parg;
-    }
-    else if (arg == "-intype")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-intype") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
-      if (*parg == "pico")
-      {
+      if (*parg == "pico") {
         pars.intype = INPICO;
         continue;
       }
-      if (*parg == "mcpico")
-      {
+      if (*parg == "mcpico") {
         pars.intype = MCPICO;
         continue;
       }
       argsokay = false;
       break;
-    }
-    else if (arg == "-N")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-N") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       NEvents = atoi(parg->data());
-    }
-    else if (arg == "-fakeeff")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-fakeeff") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.FakeEff = atof(parg->data());
       cout << "Setting fake efficiency to " << pars.FakeEff << endl;
-      if (pars.FakeEff < 0 || pars.FakeEff > 1)
-      {
+      if (pars.FakeEff < 0 || pars.FakeEff > 1) {
         argsokay = false;
         break;
       }
-    }
-    else if (arg == "-towunc")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-towunc") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.IntTowScale = atoi(parg->data());
       pars.fTowScale = 1.0 + pars.IntTowScale * pars.fTowUnc;
       cout << "Setting tower scale to " << pars.fTowScale << endl;
-      if (pars.IntTowScale < -1 || pars.FakeEff > 1)
-      {
+      if (pars.IntTowScale < -1 || pars.FakeEff > 1) {
         argsokay = false;
         break;
       }
-    }
-    else if (arg == "-geantnum")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-geantnum") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
-      if (*parg != "0" && *parg != "1")
-      {
+      if (*parg != "0" && *parg != "1") {
         argsokay = false;
         break;
       }
       forcedgeantnum = true;
       pars.UseGeantNumbering = bool(atoi(parg->data()));
-    }
-    else if (arg == "-jetnef")
-    {
-      if (++parg == arguments.end())
-      {
+    } else if (arg == "-jetnef") {
+      if (++parg == arguments.end()) {
         argsokay = false;
         break;
       }
       pars.MaxJetNEF = atof(parg->data());
       cout << "Setting Max Jet NEF to " << pars.MaxJetNEF << endl;
-      if (pars.MaxJetNEF < 0 || pars.MaxJetNEF > 1)
-      {
+      if (pars.MaxJetNEF < 0 || pars.MaxJetNEF > 1) {
         argsokay = false;
         break;
       }
-    }
-    else
-    {
+    } else {
       argsokay = false;
       break;
     }
   }
 
-  if (!argsokay)
-  {
+  if (!argsokay) {
     cerr << "usage: " << argv[0] << endl
          << " [-o OutFileName]" << endl
          << " [-N Nevents (<0 for all)]" << endl
@@ -235,10 +175,15 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
          << " [-pj PtJetMin PtJetMax]" << endl
          << " [-ec EtaConsCut]" << endl
          << " [-pc PtConsMin PtConsMax]" << endl
-         << " [-hadcorr HadronicCorrection]  -- Set to a negative value for MIP correction." << endl
+         << " [-hadcorr HadronicCorrection]  -- Set to a negative value for "
+            "MIP correction."
+         << endl
          << " [-psc PtSubConsMin PtSubConsMax]" << endl
-         << " [-fakeeff (0..1)] -- enable fake efficiency for systematics. 0.95 is a reasonable example." << endl
-         << " [-towunc -1|0|1 ] -- Shift tower energy by this times " << pars.fTowUnc << endl
+         << " [-fakeeff (0..1)] -- enable fake efficiency for systematics. "
+            "0.95 is a reasonable example."
+         << endl
+         << " [-towunc -1|0|1 ] -- Shift tower energy by this times "
+         << pars.fTowUnc << endl
          << " [-geantnum true|false] (Force Geant run event id hack)" << endl
          << endl
          << endl
@@ -250,23 +195,19 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
   // Consistency checks
   // ------------------
 
-  if (pars.PtJetMin <= 0)
-  {
-    throw std::runtime_error("PtJetMin needs to be positive (0.001 will work).");
+  if (pars.PtJetMin <= 0) {
+    throw std::runtime_error(
+        "PtJetMin needs to be positive (0.001 will work).");
   }
 
-  if (pars.intype == MCPICO)
-  {
+  if (pars.intype == MCPICO) {
     // This refers to the JetTreeMc branch
-    if (pars.ChainName != "JetTreeMc")
-    {
+    if (pars.ChainName != "JetTreeMc") {
       throw std::runtime_error("Unsuitable chain name for pars.intype==MCPICO");
     }
   }
-  if (pars.ChainName == "JetTreeMc")
-  {
-    if (pars.intype != MCPICO)
-    {
+  if (pars.ChainName == "JetTreeMc") {
+    if (pars.intype != MCPICO) {
       throw std::runtime_error("Unsuitable chain name for pars.intype==MCPICO");
     }
   }
@@ -300,23 +241,21 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
   cout << " Constituent eta cut = " << pars.EtaConsCut << endl;
   cout << " Jet eta cut = " << EtaJetCut << endl;
   cout << " Ghosts out to eta = " << EtaGhostCut << endl;
-  cout << " Reading tree named \"" << pars.ChainName << "\" from " << pars.InputName << endl;
+  cout << " Reading tree named \"" << pars.ChainName << "\" from "
+       << pars.InputName << endl;
   cout << " intype = " << pars.intype << endl;
   cout << " Writing to " << pars.OutFileName << endl;
   cout << " ----------------------------" << endl;
 }
 //----------------------------------------------------------------------
-ppAnalysis::~ppAnalysis()
-{
-  if (pJA)
-  {
+ppAnalysis::~ppAnalysis() {
+  if (pJA) {
     delete pJA;
     pJA = 0;
   }
 }
 //----------------------------------------------------------------------
-bool ppAnalysis::InitChains()
-{
+bool ppAnalysis::InitChains() {
 
   // For trees of TStarJetVector
   // (like a previous result)
@@ -328,13 +267,12 @@ bool ppAnalysis::InitChains()
 
   // For picoDSTs
   // -------------
-  if (pars.intype == INPICO || pars.intype == MCPICO)
-  {
+  if (pars.intype == INPICO || pars.intype == MCPICO) {
     pReader = SetupReader(Events, pars);
 
-    InitializeReader(pReader, pars.InputName, NEvents, PicoDebugLevel, pars.HadronicCorr);
-    if (pars.intype == MCPICO)
-    {
+    InitializeReader(pReader, pars.InputName, NEvents, PicoDebugLevel,
+                     pars.HadronicCorr);
+    if (pars.intype == MCPICO) {
       TurnOffCuts(pReader);
     }
 
@@ -348,11 +286,11 @@ bool ppAnalysis::InitChains()
 }
 //----------------------------------------------------------------------
 // Main routine for one event.
-EVENTRESULT ppAnalysis::RunEvent()
-{
+EVENTRESULT ppAnalysis::RunEvent() {
   TStarJetVector *sv;
 
   TStarJetPicoEventHeader *header = 0;
+  TStarJetPicoTriggerInfo *triggerInfo = 0;
 
   UInt_t filehash = 0;
   TString cname = "";
@@ -372,13 +310,11 @@ EVENTRESULT ppAnalysis::RunEvent()
   vz = 999;
   particles.clear();
 
-  switch (pars.intype)
-  {
+  switch (pars.intype) {
     // =====================================================
   case INPICO:
   case MCPICO:
-    if (!pReader->NextEvent())
-    {
+    if (!pReader->NextEvent()) {
       pReader->PrintStatus();
       return EVENTRESULT::ENDOFINPUT;
       break;
@@ -388,6 +324,8 @@ EVENTRESULT ppAnalysis::RunEvent()
     pFullEvent = pReader->GetOutputContainer()->GetArray();
 
     header = pReader->GetEvent()->GetHeader();
+    triggerInfo = pReader->GetEvent()->GetTrigObj(1);
+    triggerInfo->PrintInfo();
 
     refmult = header->GetProperReferenceMultiplicity();
     eventid = header->GetEventId();
@@ -396,9 +334,9 @@ EVENTRESULT ppAnalysis::RunEvent()
 
     // For GEANT: Need to devise a runid that's unique but also
     // reproducible to match Geant and GeantMc data.
-    if (pars.UseGeantNumbering)
-    {
-      TString cname = gSystem->BaseName(pReader->GetInputChain()->GetCurrentFile()->GetName());
+    if (pars.UseGeantNumbering) {
+      TString cname = gSystem->BaseName(
+          pReader->GetInputChain()->GetCurrentFile()->GetName());
       UInt_t filehash = cname.Hash();
       while (filehash > INT_MAX - 100000)
         filehash -= INT_MAX / 4; // some random large number
@@ -415,8 +353,7 @@ EVENTRESULT ppAnalysis::RunEvent()
 
   // Fill particle container
   // -----------------------
-  for (int i = 0; i < pFullEvent->GetEntries(); ++i)
-  {
+  for (int i = 0; i < pFullEvent->GetEntries(); ++i) {
     sv = (TStarJetVector *)pFullEvent->At(i);
 
     // Ensure kinematic similarity
@@ -426,9 +363,9 @@ EVENTRESULT ppAnalysis::RunEvent()
       continue;
 
     //! setting pid mass for particles from pythia
-    if (pars.intype == MCPICO)
-    {
-      TParticlePDG *pid = (TParticlePDG *)PDGdb.GetParticle((Int_t)sv->mc_pdg_pid());
+    if (pars.intype == MCPICO) {
+      TParticlePDG *pid =
+          (TParticlePDG *)PDGdb.GetParticle((Int_t)sv->mc_pdg_pid());
       double sv_mass = pid->Mass();
       double E = TMath::Sqrt(sv->P() * sv->P() + sv_mass * sv_mass);
       sv->SetPxPyPzE(sv->Px(), sv->Py(), sv->Pz(), E);
@@ -436,8 +373,7 @@ EVENTRESULT ppAnalysis::RunEvent()
     }
 
     //! setting pion mass for charged particles and zero mass for towers
-    if (pars.intype == INPICO)
-    {
+    if (pars.intype == INPICO) {
       TParticlePDG *pid = (TParticlePDG *)PDGdb.GetParticle(211);
       double sv_mass;
       if (sv->GetCharge() != 0)
@@ -452,13 +388,11 @@ EVENTRESULT ppAnalysis::RunEvent()
 
     // TRACKS
     // ------
-    if (sv->GetCharge() != 0)
-    {
+    if (sv->GetCharge() != 0) {
       // EFFICIENCY uncertainty
       // ----------------------
       Double_t mran = gRandom->Uniform(0, 1);
-      if (mran > pars.FakeEff)
-      {
+      if (mran > pars.FakeEff) {
         continue;
       }
     }
@@ -466,13 +400,13 @@ EVENTRESULT ppAnalysis::RunEvent()
     // TOWERS
     // ------
     // Shift gain
-    if (!sv->GetCharge())
-    {
+    if (!sv->GetCharge()) {
       (*sv) *= pars.fTowScale; // for systematics
     }
 
     particles.push_back(PseudoJet(*sv));
-    particles.back().set_user_info(new JetAnalysisUserInfo(3 * sv->GetCharge(), sv->mc_pdg_pid(), "", sv->GetTowerID()));
+    particles.back().set_user_info(new JetAnalysisUserInfo(
+        3 * sv->GetCharge(), sv->mc_pdg_pid(), "", sv->GetTowerID()));
   }
 
   mult = particles.size();
@@ -482,20 +416,17 @@ EVENTRESULT ppAnalysis::RunEvent()
   // For pythia, use cross section as weight
   // ---------------------------------------
 
-  if (pars.InputName.Contains("pt-hat"))
-  {
+  if (pars.InputName.Contains("pt-hat")) {
     TString currentfile = pReader->GetInputChain()->GetCurrentFile()->GetName();
     weight = LookupRun12Xsec(currentfile);
-    if (fabs(weight - 1) < 1e-4)
-    {
+    if (fabs(weight - 1) < 1e-4) {
       throw std::runtime_error("mcweight unchanged!");
     }
   }
 
   // Run analysis
   // ------------
-  if (pJA)
-  {
+  if (pJA) {
     delete pJA;
     pJA = 0;
   }
@@ -504,8 +435,7 @@ EVENTRESULT ppAnalysis::RunEvent()
   JetAnalyzer &JA = *pJA;
   vector<PseudoJet> JAResult = sorted_by_pt(select_jet(JA.inclusive_jets()));
 
-  if (JAResult.size() == 0)
-  {
+  if (JAResult.size() == 0) {
     return EVENTRESULT::NOJETS;
   }
 
@@ -522,8 +452,7 @@ EVENTRESULT ppAnalysis::RunEvent()
       (pars.InputName.Contains("hat2535_") && JAResult[0].perp() > 70.0) ||
       (pars.InputName.Contains("hat3545_") && JAResult[0].perp() > 90.0) ||
       (pars.InputName.Contains("hat4555_") && JAResult[0].perp() > 110.0) ||
-      (pars.InputName.Contains("hat55999_") && JAResult[0].perp() > 1000.0))
-  {
+      (pars.InputName.Contains("hat55999_") && JAResult[0].perp() > 1000.0)) {
     is_rejected = true;
     return EVENTRESULT::NOTACCEPTED;
   }
@@ -531,8 +460,7 @@ EVENTRESULT ppAnalysis::RunEvent()
   int njets = JAResult.size();
   // cout << "-----------------------" << endl;
 
-  for (unsigned ijet = 0; ijet < JAResult.size(); ijet++)
-  {
+  for (unsigned ijet = 0; ijet < JAResult.size(); ijet++) {
     PseudoJet &CurrentJet = JAResult[ijet];
     PseudoJet NeutralPart = join(OnlyNeutral(CurrentJet.constituents()));
     PseudoJet ChargedPart = join(OnlyCharged(CurrentJet.constituents()));
@@ -540,18 +468,15 @@ EVENTRESULT ppAnalysis::RunEvent()
     double jetptne = 0.0;
     double jetpttot = 0.0;
     double q = 0;
-    for (PseudoJet &c : ChargedPart.constituents())
-    {
+    for (PseudoJet &c : ChargedPart.constituents()) {
       q += c.user_info<JetAnalysisUserInfo>().GetQuarkCharge() / 3.0;
     }
 
-    for (PseudoJet &n : NeutralPart.constituents())
-    {
+    for (PseudoJet &n : NeutralPart.constituents()) {
       jetptne += n.perp();
     }
 
-    for (PseudoJet &part : CurrentJet.constituents())
-    {
+    for (PseudoJet &part : CurrentJet.constituents()) {
       jetpttot += part.perp();
     }
 
@@ -596,20 +521,17 @@ EVENTRESULT ppAnalysis::RunEvent()
   return EVENTRESULT::JETSFOUND;
 }
 //----------------------------------------------------------------------
-void InitializeReader(std::shared_ptr<TStarJetPicoReader> pReader, const TString InputName, const Long64_t NEvents,
-                      const int PicoDebugLevel, const double HadronicCorr)
-{
+void InitializeReader(std::shared_ptr<TStarJetPicoReader> pReader,
+                      const TString InputName, const Long64_t NEvents,
+                      const int PicoDebugLevel, const double HadronicCorr) {
 
   TStarJetPicoReader &reader = *pReader;
 
-  if (HadronicCorr < 0)
-  {
+  if (HadronicCorr < 0) {
     reader.SetApplyFractionHadronicCorrection(kFALSE);
     reader.SetApplyMIPCorrection(kTRUE);
     reader.SetRejectTowerElectrons(kTRUE);
-  }
-  else
-  {
+  } else {
     reader.SetApplyFractionHadronicCorrection(kTRUE);
     reader.SetFractionHadronicCorrection(HadronicCorr);
     reader.SetApplyMIPCorrection(kFALSE);
@@ -621,8 +543,8 @@ void InitializeReader(std::shared_ptr<TStarJetPicoReader> pReader, const TString
 }
 //----------------------------------------------------------------------
 // Helper to deal with repetitive stuff
-shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pars)
-{
+shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain,
+                                           const ppParameters &pars) {
   TStarJetPicoDefinitions::SetDebugLevel(0); // 10 for more output
 
   shared_ptr<TStarJetPicoReader> pReader = make_shared<TStarJetPicoReader>();
@@ -644,14 +566,15 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pa
 
   std::cout << "Using these event cuts:" << std::endl;
   std::cout << " Vz: " << evCuts->GetVertexZCut() << std::endl;
-  std::cout << " Refmult: " << evCuts->GetRefMultCutMin() << " -- " << evCuts->GetRefMultCutMax() << std::endl;
+  std::cout << " Refmult: " << evCuts->GetRefMultCutMin() << " -- "
+            << evCuts->GetRefMultCutMax() << std::endl;
   std::cout << " Delta Vz:  " << evCuts->GetVertexZDiffCut() << std::endl;
   std::cout << " MaxEventPt:  " << evCuts->GetMaxEventPtCut() << std::endl;
   std::cout << " MaxEventEt:  " << evCuts->GetMaxEventEtCut() << std::endl;
 
-  // This method does NOT WORK for GEANT MC trees because everything is in the tracks...
-  // Do it by hand later on, using pars.ManualHtCut;
-  // Also doesn't work for general trees, but there it can't be fixed
+  // This method does NOT WORK for GEANT MC trees because everything is in the
+  // tracks... Do it by hand later on, using pars.ManualHtCut; Also doesn't work
+  // for general trees, but there it can't be fixed
 
   // Tracks cuts
   TStarJetPicoTrackCuts *trackCuts = reader.GetTrackCuts();
@@ -663,7 +586,8 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pa
   std::cout << "Using these track cuts:" << std::endl;
   std::cout << " dca : " << trackCuts->GetDCACut() << std::endl;
   std::cout << " nfit : " << trackCuts->GetMinNFitPointsCut() << std::endl;
-  std::cout << " nfitratio : " << trackCuts->GetFitOverMaxPointsCut() << std::endl;
+  std::cout << " nfitratio : " << trackCuts->GetFitOverMaxPointsCut()
+            << std::endl;
   std::cout << " maxpt : " << trackCuts->GetMaxPtCut() << std::endl;
 
   // Towers
@@ -672,7 +596,8 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pa
 
   std::cout << "Using these tower cuts:" << std::endl;
   std::cout << "  GetMaxEtCut = " << towerCuts->GetMaxEtCut() << std::endl;
-  std::cout << "  Gety8PythiaCut = " << towerCuts->Gety8PythiaCut() << std::endl;
+  std::cout << "  Gety8PythiaCut = " << towerCuts->Gety8PythiaCut()
+            << std::endl;
 
   // V0s: Turn off
   reader.SetProcessV0s(false);
@@ -681,8 +606,7 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pa
 }
 
 //----------------------------------------------------------------------
-void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader)
-{
+void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader) {
 
   pReader->SetProcessTowers(false);
   TStarJetPicoEventCuts *evCuts = pReader->GetEventCuts();
@@ -696,7 +620,8 @@ void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader)
   // evCuts->SetMinEventPtCut (-1);
   evCuts->SetMinEventEtCut(-1);
 
-  evCuts->SetPVRankingCutOff(); //  Use SetPVRankingCutOff() to turn off vertex ranking cut.  default is OFF
+  evCuts->SetPVRankingCutOff(); //  Use SetPVRankingCutOff() to turn off vertex
+                                //  ranking cut.  default is OFF
 
   // Tracks cuts
   TStarJetPicoTrackCuts *trackCuts = pReader->GetTrackCuts();
@@ -705,7 +630,8 @@ void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader)
   trackCuts->SetFitOverMaxPointsCut(-1);
   trackCuts->SetMaxPtCut(99999);
 
-  // Towers: should be no tower in MC. All (charged or neutral) are handled in track
+  // Towers: should be no tower in MC. All (charged or neutral) are handled in
+  // track
   TStarJetPicoTowerCuts *towerCuts = pReader->GetTowerCuts();
   towerCuts->SetMaxEtCut(99999);
 
@@ -713,8 +639,7 @@ void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader)
 }
 
 //----------------------------------------------------------------------
-double LookupRun12Xsec(TString filename)
-{
+double LookupRun12Xsec(TString filename) {
   //   (pthatrange)  nevents  weighted-Xsection
   //   2, 3,       2409849,           9.00176
   //   3, 4,       3706843,           1.46259
@@ -731,12 +656,19 @@ double LookupRun12Xsec(TString filename)
   //  55,99,       1264931,       1.43197e-09
 
   const int NUMBEROFPT = 13;
-  // const char *PTBINS[NUMBEROFPT]={"2_3","3_4","4_5","5_7","7_9","9_11","11_15","15_20","20_25","25_35","35_-1"};
-  const static float XSEC[NUMBEROFPT] = {9.0012, 1.46253, 0.354566, 0.151622, 0.0249062, 0.00584527, 0.00230158, 0.000342755, 4.57002e-05, 9.72535e-06, 4.69889e-07, 2.69202e-08, 1.43453e-09};
-  const static float NUMBEROFEVENT[NUMBEROFPT] = {3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 2e6, 2e6, 1e6, 1e6};
-  const static vector<string> vptbins = {"pt-hat23_", "pt-hat34_", "pt-hat45_", "pt-hat57_", "pt-hat79_", "pt-hat911_", "pt-hat1115_", "pt-hat1520_", "pt-hat2025_", "pt-hat2535_", "pt-hat3545_", "pt-hat4555_", "pt-hat55999_"};
-  for (int i = 0; i < vptbins.size(); ++i)
-  {
+  // const char
+  // *PTBINS[NUMBEROFPT]={"2_3","3_4","4_5","5_7","7_9","9_11","11_15","15_20","20_25","25_35","35_-1"};
+  const static float XSEC[NUMBEROFPT] = {
+      9.0012,      1.46253,     0.354566,    0.151622,    0.0249062,
+      0.00584527,  0.00230158,  0.000342755, 4.57002e-05, 9.72535e-06,
+      4.69889e-07, 2.69202e-08, 1.43453e-09};
+  const static float NUMBEROFEVENT[NUMBEROFPT] = {
+      3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 2e6, 2e6, 1e6, 1e6};
+  const static vector<string> vptbins = {
+      "pt-hat23_",   "pt-hat34_",   "pt-hat45_",   "pt-hat57_",   "pt-hat79_",
+      "pt-hat911_",  "pt-hat1115_", "pt-hat1520_", "pt-hat2025_", "pt-hat2535_",
+      "pt-hat3545_", "pt-hat4555_", "pt-hat55999_"};
+  for (int i = 0; i < vptbins.size(); ++i) {
     if (filename.Contains(vptbins.at(i).data()))
       return XSEC[i] / NUMBEROFEVENT[i];
   }
@@ -745,17 +677,11 @@ double LookupRun12Xsec(TString filename)
 }
 
 //----------------------------------------------------------------------
-ostream &operator<<(ostream &ostr, const PseudoJet &jet)
-{
-  if (jet == 0)
-  {
+ostream &operator<<(ostream &ostr, const PseudoJet &jet) {
+  if (jet == 0) {
     ostr << " 0 ";
-  }
-  else
-  {
-    ostr << " pt = " << jet.pt()
-         << " m = " << jet.m()
-         << " y = " << jet.rap()
+  } else {
+    ostr << " pt = " << jet.pt() << " m = " << jet.m() << " y = " << jet.rap()
          << " phi = " << jet.phi()
          << " ClusSeq = " << (jet.has_associated_cs() ? "yes" : "no");
   }

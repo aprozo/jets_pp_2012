@@ -9,56 +9,57 @@
 #ifndef __PPANALYSIS_HH
 #define __PPANALYSIS_HH
 
-#include "ppParameters.hh"
 #include "JetAnalyzer.hh"
+#include "ppParameters.hh"
 
+#include "TChain.h"
+#include "TClonesArray.h"
 #include "TF1.h"
+#include "TFile.h"
 #include "TH1.h"
 #include "TH2.h"
 #include "TH3.h"
-#include "TString.h"
-#include "TRandom.h"
-#include "TChain.h"
-#include "TTree.h"
 #include "TLeaf.h"
-#include "TFile.h"
-#include "TSystem.h"
 #include "TParameter.h"
-#include "TClonesArray.h"
+#include "TRandom.h"
+#include "TString.h"
+#include "TSystem.h"
+#include "TTree.h"
 
 #include "fastjet/contrib/Recluster.hh"
 #include "fastjet/contrib/SoftDrop.hh"
 
 // Not needed for analysis per se
-#include "TStarJetPicoReader.h"
 #include "TStarJetPicoEvent.h"
-#include "TStarJetPicoEventHeader.h"
 #include "TStarJetPicoEventCuts.h"
+#include "TStarJetPicoEventHeader.h"
+#include "TStarJetPicoReader.h"
 
 #include "TStarJetPicoPrimaryTrack.h"
-#include "TStarJetPicoTrackCuts.h"
 #include "TStarJetPicoTowerCuts.h"
+#include "TStarJetPicoTrackCuts.h"
+#include "TStarJetPicoTriggerInfo.h"
 
-#include "TStarJetVectorContainer.h"
-#include "TStarJetVector.h"
 #include "TStarJetPicoTriggerInfo.h"
 #include "TStarJetPicoUtils.h"
+#include "TStarJetVector.h"
+#include "TStarJetVectorContainer.h"
 
 #include "TDatabasePDG.h"
 #include "TParticlePDG.h"
 
 #include <assert.h>
-#include <iostream>
-#include <cmath>
 #include <climits>
+#include <cmath>
+#include <iostream>
 #include <sstream>
 
 using namespace std;
 using namespace fastjet;
 using namespace contrib;
 
-#include <random>
 #include <algorithm>
+#include <random>
 
 double LookupRun12Xsec(TString filename);
 
@@ -66,10 +67,8 @@ double LookupRun12Xsec(TString filename);
    For sorting with a different key
 */
 typedef pair<PseudoJet, double> PseudoJetPt;
-struct PseudoJetPtGreater
-{
-  bool operator()(PseudoJetPt const &a, PseudoJetPt const &b)
-  {
+struct PseudoJetPtGreater {
+  bool operator()(PseudoJetPt const &a, PseudoJetPt const &b) {
     return a.second > b.second;
   }
 };
@@ -77,14 +76,12 @@ struct PseudoJetPtGreater
 /*
   To keep original and groomed jets connected
  */
-class ResultStruct
-{
+class ResultStruct {
 public:
   PseudoJet orig;
-  ResultStruct(PseudoJet orig) : orig(orig) {};
+  ResultStruct(PseudoJet orig) : orig(orig){};
 
-  static bool origptgreater(ResultStruct const &a, ResultStruct const &b)
-  {
+  static bool origptgreater(ResultStruct const &a, ResultStruct const &b) {
     return a.orig.pt() > b.orig.pt();
   };
 };
@@ -97,18 +94,26 @@ ostream &operator<<(ostream &ostr, const PseudoJet &jet);
 /*
     Helper for chains
  */
-void InitializeReader(std::shared_ptr<TStarJetPicoReader> pReader, const TString InputName, const Long64_t NEvents,
-                      const int PicoDebugLevel, const double HadronicCorr = 0.999999);
+void InitializeReader(std::shared_ptr<TStarJetPicoReader> pReader,
+                      const TString InputName, const Long64_t NEvents,
+                      const int PicoDebugLevel,
+                      const double HadronicCorr = 0.999999);
 
-static const Selector NotGhost = !fastjet::SelectorIsPureGhost();                                           ///< Helper useful outside the class as well
-static const Selector OnlyCharged = NotGhost && (SelectorChargeRange(-3, -1) || SelectorChargeRange(1, 3)); ///< Helper useful outside the class as well
-static const Selector OnlyNeutral = NotGhost && SelectorChargeRange(0, 0);                                  ///< Helper useful outside the class as well
+static const Selector NotGhost =
+    !fastjet::SelectorIsPureGhost(); ///< Helper useful outside the class as
+                                     ///< well
+static const Selector OnlyCharged =
+    NotGhost &&
+    (SelectorChargeRange(-3, -1) ||
+     SelectorChargeRange(1, 3)); ///< Helper useful outside the class as well
+static const Selector OnlyNeutral =
+    NotGhost &&
+    SelectorChargeRange(0, 0); ///< Helper useful outside the class as well
 
 /*
    The main class
  */
-class ppAnalysis
-{
+class ppAnalysis {
 
 private:
   // These need to be initialized
@@ -195,7 +200,8 @@ public:
   /// Get the refmult of the current event
   inline double GetRefmult() { return refmult; };
 
-  /// Get the runid of the current event (this id for geant events can match to bad run ids)
+  /// Get the runid of the current event (this id for geant events can match to
+  /// bad run ids)
   inline double GetRunid1() { return runid1; };
 
   /// Get the runid of the current event
@@ -220,7 +226,8 @@ public:
   inline const vector<ResultStruct> &GetResult() { return Result; }
 };
 
-shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pars);
+shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain,
+                                           const ppParameters &pars);
 
 /* For use with GeantMc data
  */
