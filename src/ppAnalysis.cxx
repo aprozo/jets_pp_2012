@@ -10,6 +10,10 @@ using std::cerr;
 using std::cout;
 using std::endl;
 
+bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi);
+float trigger_match(vector<TStarJetPicoTriggerInfo *> triggers, PseudoJet &jet,
+                    TString TriggerName, float R);
+
 // Standard ctor
 ppAnalysis::ppAnalysis(const int argc, const char **const argv) {
   // Parse arguments
@@ -254,6 +258,7 @@ ppAnalysis::~ppAnalysis() {
     pJA = 0;
   }
 }
+
 //----------------------------------------------------------------------
 bool ppAnalysis::InitChains() {
 
@@ -290,8 +295,7 @@ EVENTRESULT ppAnalysis::RunEvent() {
   TStarJetVector *sv;
 
   TStarJetPicoEventHeader *header = 0;
-  TStarJetPicoTriggerInfo *triggerInfo = 0;
-
+  vector<TStarJetPicoTriggerInfo *> triggers;
   UInt_t filehash = 0;
   TString cname = "";
 
@@ -309,7 +313,7 @@ EVENTRESULT ppAnalysis::RunEvent() {
   njets = 0;
   vz = 999;
   particles.clear();
-
+  TString trigger_array = "";
   switch (pars.intype) {
     // =====================================================
   case INPICO:
@@ -322,10 +326,58 @@ EVENTRESULT ppAnalysis::RunEvent() {
     pReader->PrintStatus(10);
 
     pFullEvent = pReader->GetOutputContainer()->GetArray();
-
     header = pReader->GetEvent()->GetHeader();
-    triggerInfo = pReader->GetEvent()->GetTrigObj(1);
-    triggerInfo->PrintInfo();
+
+    for (int i = 0; i < header->GetNOfTrigObjs(); ++i) {
+      triggers.push_back(pReader->GetEvent()->GetTrigObj(i));
+    }
+    // fill remaining triggers positions
+    for (auto trig : triggers) {
+      if (trig->isJP2() || trig->isJP1() || trig->isJP0()) {
+        float eta, phi;
+        if (getBarrelJetPatchEtaPhi(trig->GetId(), eta, phi)) {
+          trig->SetEta(eta);
+          trig->SetPhi(phi);
+        }
+      }
+    }
+
+    // cout << "============================================ " << endl;
+
+    // for (Int_t i = 0; i < header->GetNOfTriggerIds(); i++) {
+    //   trigger_array += Form("%7d ", header->GetTriggerId(i));
+    // }
+    // cout << trigger_array << endl;
+    // for (auto trig : triggers) {
+    //   //  Bitmap
+    //   //  last 7 bits :
+    //   // |jp2|jp1|jp0|bht3|bht2|bht1|0
+    //   if (!trig->isBHT2())
+    //     continue;
+    //   // cout << " BHT2";
+    //   cout << "Trigger: " << trig->GetId();
+
+    //   cout << " ADC: " << trig->GetADC();
+    //   cout << " Eta: " << trig->GetEta();
+    //   cout << " Phi: " << trig->GetPhi();
+    //   cout << " BitMap: " << trig->GetBitMap() << endl;
+    // }
+
+    // //  ADC values:
+    // // fHighTowerThreshold[4] = 11 , 15 , 18 , 8  - bht0, bht1, bht2, bht3
+    // // fJetPatchThreshold[3]  = 20 , 28 , 36  -     jp0, jp1, jp2
+
+    // // (500205) BHT2 trigger Id
+    // // (500215) BHT2 trigger Id
+    // // (500401) JP2 trigger Id
+    // // (500411)JP2 trigger Id
+
+    //    fTrigSel.Contains("ppHT"))
+    //    mTrigId==370541 || mTrigId==370542 || mTrigId==370351)   //
+    //    BHT0*BBCMB*TOF0, BHT0*BBCMB*TOF0, MTD*BHT3
+    //   fTrigSel.Contains("ppJP2")) {
+    //   mTrigId==370621)		//  JP2
+    //   mTrigId==370601 || mTrigId==370611
 
     refmult = header->GetProperReferenceMultiplicity();
     eventid = header->GetEventId();
@@ -465,6 +517,9 @@ EVENTRESULT ppAnalysis::RunEvent() {
     PseudoJet NeutralPart = join(OnlyNeutral(CurrentJet.constituents()));
     PseudoJet ChargedPart = join(OnlyCharged(CurrentJet.constituents()));
 
+    float triggerMatched =
+        trigger_match(triggers, CurrentJet, pars.TriggerName, pars.R);
+
     double jetptne = 0.0;
     double jetpttot = 0.0;
     double q = 0;
@@ -483,6 +538,8 @@ EVENTRESULT ppAnalysis::RunEvent() {
     JetAnalysisUserInfo *userinfo = new JetAnalysisUserInfo();
     // Save neutral energy fraction in multi-purpose field
     userinfo->SetNumber(jetptne / jetpttot);
+    userinfo->SetTriggerMatch(triggerMatched);
+
     CurrentJet.set_user_info(userinfo);
 
     if (pars.MaxJetNEF < 1.0 && jetptne / jetpttot > pars.MaxJetNEF)
@@ -676,14 +733,110 @@ double LookupRun12Xsec(TString filename) {
   return -1;
 }
 
-//----------------------------------------------------------------------
-ostream &operator<<(ostream &ostr, const PseudoJet &jet) {
-  if (jet == 0) {
-    ostr << " 0 ";
-  } else {
-    ostr << " pt = " << jet.pt() << " m = " << jet.m() << " y = " << jet.rap()
-         << " phi = " << jet.phi()
-         << " ClusSeq = " << (jet.has_associated_cs() ? "yes" : "no");
+void print_assert(const char *exp, const char *file, int line) {
+  std::cerr << "Assertion '" << exp << "' failed in '" << file << "' at line '"
+            << line << "'" << std::endl;
+  std::terminate();
+}
+
+#define always_assert(exp)                                                     \
+  ((exp) ? (void)0 : print_assert(#exp, __FILE__, __LINE__))
+
+float getJetPatchPhi(int jetPatch) {
+  return TVector2::Phi_mpi_pi((150 - (jetPatch % 6) * 60) * TMath::DegToRad());
+}
+
+bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi) {
+  // Sanity check
+  if (jetPatch < 0 || jetPatch >= 18)
+    return false;
+  // The jet patches are numbered starting with JP0 centered at 150 degrees
+  // looking from the West into the IR (intersection region) and increasing
+  // clockwise, i.e. JP1 at 90 degrees, JP2 at 30 degrees, etc. On the East
+  // side the numbering picks up at JP6 centered again at 150 degrees and
+  // increasing clockwise (again as seen from the *West* into the IR). Thus
+  // JP0 and JP6 are in the same phi location in the STAR coordinate system.
+  // So are JP1 and JP7, etc.
+  // JP locations:
+  // Jet Patch# Eta   Phi   Quadrant
+  // 0          0.5   150    10'
+  // 1          0.5   90     12'
+  // 2          0.5   30     2'
+  // 3          0.5  -30     4'
+  // 4          0.5  -90     6'
+  // 5          0.5  -150    8'
+  // 6         -0.5   150    10'
+  // 7         -0.5   90     12'
+  // 8         -0.5   30     2'
+  // 9         -0.5  -30     4'
+  // 10        -0.5  -90     6'
+  // 11        -0.5  -150    8'
+  // 12        -0.1   150    10'
+  // 13        -0.1   90     12'
+  // 14        -0.1   30     2'
+  // 15        -0.1  -30     4'
+  // 16        -0.1  -90     6'
+  // 17        -0.1  -150    8'
+
+  // http://drupal.star.bnl.gov/STAR/system/files/BEMC_y2004.pdf
+
+  if (jetPatch >= 0 && jetPatch < 6)
+    eta = 0.5;
+  if (jetPatch >= 6 && jetPatch < 12)
+    eta = -0.5;
+  if (jetPatch >= 12 && jetPatch < 18)
+    eta = -0.1;
+  phi = getJetPatchPhi(jetPatch);
+  return true;
+}
+
+float trigger_match(vector<TStarJetPicoTriggerInfo *> triggers, PseudoJet &jet,
+                    TString trigger_name, float R) {
+
+  // 0 - no match
+  // 1 - matched with JP
+  // 2 - matched with HT
+  // 3 - matched with both
+
+  float matched = 0;
+
+  if (trigger_name == "ppJP" || trigger_name == "All") {
+    for (auto trigger : triggers) {
+      if (trigger->isJP2()) {
+        float eta, phi;
+        eta = trigger->GetEta();
+        phi = trigger->GetPhi();
+        double deta = jet.eta() - eta;
+        double dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
+        if ((fabs(deta) < R) && (fabs(dphi) < R)) {
+          // cout << "Matched with trigger eta: " << eta << " phi: " << phi
+          //      << endl;
+          // cout << "Jet eta: " << jet.eta() << " phi: " << jet.phi() << endl;
+          matched = 1;
+        }
+      }
+    }
   }
-  return ostr;
+
+  if (trigger_name == "ppHT" || trigger_name == "All") {
+    for (auto trigger : triggers) {
+      if (trigger->isBHT2()) {
+        int trigger_towerid = trigger->GetId();
+        PseudoJet NeutralPart = join(OnlyNeutral(jet.constituents()));
+        for (PseudoJet &part : NeutralPart.constituents()) {
+          if (part.user_info<JetAnalysisUserInfo>().GetNumber() ==
+              trigger_towerid) {
+            // cout << "Matched with trigger tower id: " << trigger_towerid
+            //      << endl;
+            if (matched == 1)
+              matched = 3;
+            else
+              matched = 2;
+          }
+        }
+      }
+    }
+  }
+
+  return matched;
 }
