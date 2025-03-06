@@ -14,10 +14,22 @@
 #     -B $PWD star_star.simg \
 #     bash ./container.sh output/test/pt-hat2535_35.root geant
 
+
 # singularity exec -e \
 #     -B $PWD star_star.simg \
-#     bash ./container_matching_mc_reco.sh tree_pt-hat45_010.root matching_test_tree.root
+#     bash ./container.sh output/test/pt-hat2535_35.root geant
+
+# cp tree_pt-hat2535_35.root tree_pt-hat2535_35_geant.root
+
+# singularity exec -e \
+#     -B $PWD star_star.simg \
+#     bash ./container.sh output/test/pt-hat2535_35.root mc
+
+# cp tree_pt-hat2535_35.root tree_pt-hat2535_35_mc.root
+
 
 singularity exec -e \
     -B $PWD star_star.simg \
-    bash ./container.sh output/test/pt-hat2535_35.root geant
+    bash ./container_matching_mc_reco.sh tree_pt-hat1115_066.root matching_test_tree.root
+
+

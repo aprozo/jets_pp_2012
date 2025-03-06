@@ -1,7 +1,7 @@
 #!/bin/bash
 #change the following parameters
 runningTimeLimitHours=1 #hours
-sleepTime=10            #seconds
+sleepTime=100            #seconds
 #  ========================================================
 username=$(whoami)                                 # Set the username for which to check the jobs
 runningTime=0                                      # Initialize the running time to 0

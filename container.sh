@@ -31,15 +31,15 @@ mc)
     picoType="mcpico"
     ;;
 geant)
-    jet_min_pt=10
+    jet_min_pt=5
     ;;
 geant_JP2)
     trigger="ppJP"
-    jet_min_pt=10
+    jet_min_pt=5
     ;;
 geant_HT2)
     trigger="ppHT"
-    jet_min_pt=10
+    jet_min_pt=5
     ;;
 
 esac

@@ -13,6 +13,9 @@ using std::endl;
 bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi);
 float trigger_match(vector<TStarJetPicoTriggerInfo *> triggers, PseudoJet &jet,
                     TString TriggerName, float R);
+bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers,
+              float R);
+bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers);
 
 // Standard ctor
 ppAnalysis::ppAnalysis(const int argc, const char **const argv) {
@@ -517,8 +520,8 @@ EVENTRESULT ppAnalysis::RunEvent() {
     PseudoJet NeutralPart = join(OnlyNeutral(CurrentJet.constituents()));
     PseudoJet ChargedPart = join(OnlyCharged(CurrentJet.constituents()));
 
-    float triggerMatched =
-        trigger_match(triggers, CurrentJet, pars.TriggerName, pars.R);
+    bool is_matched_jp = match_jp(CurrentJet, triggers, pars.R);
+    bool is_matched_ht = match_ht(CurrentJet, triggers);
 
     double jetptne = 0.0;
     double jetpttot = 0.0;
@@ -538,7 +541,8 @@ EVENTRESULT ppAnalysis::RunEvent() {
     JetAnalysisUserInfo *userinfo = new JetAnalysisUserInfo();
     // Save neutral energy fraction in multi-purpose field
     userinfo->SetNumber(jetptne / jetpttot);
-    userinfo->SetTriggerMatch(triggerMatched);
+    userinfo->SetMatchJP(is_matched_jp);
+    userinfo->SetMatchHT(is_matched_ht);
 
     CurrentJet.set_user_info(userinfo);
 
@@ -790,53 +794,35 @@ bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi) {
   return true;
 }
 
-float trigger_match(vector<TStarJetPicoTriggerInfo *> triggers, PseudoJet &jet,
-                    TString trigger_name, float R) {
+bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers,
+              float R) {
+  for (auto trigger : triggers) {
+    if (trigger->isJP2()) {
+      float eta, phi;
+      eta = trigger->GetEta();
+      phi = trigger->GetPhi();
+      double deta = jet.eta() - eta;
+      double dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
+      if ((fabs(deta) < R) && (fabs(dphi) < R)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
-  // 0 - no match
-  // 1 - matched with JP
-  // 2 - matched with HT
-  // 3 - matched with both
-
-  float matched = 0;
-
-  if (trigger_name == "ppJP" || trigger_name == "All") {
-    for (auto trigger : triggers) {
-      if (trigger->isJP2()) {
-        float eta, phi;
-        eta = trigger->GetEta();
-        phi = trigger->GetPhi();
-        double deta = jet.eta() - eta;
-        double dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
-        if ((fabs(deta) < R) && (fabs(dphi) < R)) {
-          // cout << "Matched with trigger eta: " << eta << " phi: " << phi
-          //      << endl;
-          // cout << "Jet eta: " << jet.eta() << " phi: " << jet.phi() << endl;
-          matched = 1;
+bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers) {
+  for (auto trigger : triggers) {
+    if (trigger->isBHT2()) {
+      int trigger_towerid = trigger->GetId();
+      PseudoJet NeutralPart = join(OnlyNeutral(jet.constituents()));
+      for (PseudoJet &part : NeutralPart.constituents()) {
+        if (part.user_info<JetAnalysisUserInfo>().GetNumber() ==
+            trigger_towerid) {
+          return true;
         }
       }
     }
   }
-
-  if (trigger_name == "ppHT" || trigger_name == "All") {
-    for (auto trigger : triggers) {
-      if (trigger->isBHT2()) {
-        int trigger_towerid = trigger->GetId();
-        PseudoJet NeutralPart = join(OnlyNeutral(jet.constituents()));
-        for (PseudoJet &part : NeutralPart.constituents()) {
-          if (part.user_info<JetAnalysisUserInfo>().GetNumber() ==
-              trigger_towerid) {
-            // cout << "Matched with trigger tower id: " << trigger_towerid
-            //      << endl;
-            if (matched == 1)
-              matched = 3;
-            else
-              matched = 2;
-          }
-        }
-      }
-    }
-  }
-
-  return matched;
+  return false;
 }

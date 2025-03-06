@@ -84,6 +84,23 @@ int main(int argc, const char **argv) {
   hEventCounter->GetXaxis()->SetBinLabel(4, "NOCONSTS");
   hEventCounter->GetXaxis()->SetBinLabel(5, "NOTACCEPTED");
 
+  TString csvfile = "lists/good_run_list.list";
+  vector<int> goodruns;
+  if (readinbadrunlist(goodruns, csvfile) == false) {
+    cerr << "Problems reading good run list" << endl;
+    return -1;
+  }
+
+  TH1D *hEventsRun =
+      new TH1D("hEventsRun", "Events per run", goodruns.size(), 0, goodruns.size());
+  
+  // set names of bins to run numbers
+  for (unsigned int i = 0; i < goodruns.size(); ++i) {
+    hEventsRun->GetXaxis()->SetBinLabel(i + 1, Form("%d", goodruns[i]));
+  }
+
+
+
   // Save results
   // ------------
   TTree *ResultTree = new TTree("ResultTree", "Result Jets");
@@ -115,8 +132,12 @@ int main(int argc, const char **argv) {
   double neutral_fraction[1000];
   ResultTree->Branch("neutral_fraction", neutral_fraction,
                      "neutral_fraction[njets]/D");
-  float trigger_match[1000];
-  ResultTree->Branch("trigger_match", trigger_match, "trigger_match[njets]/F");
+  bool trigger_match_jp[1000];
+  ResultTree->Branch("trigger_match_jp", trigger_match_jp,
+                     "trigger_match_jp[njets]/O");
+  bool trigger_match_ht[1000];
+  ResultTree->Branch("trigger_match_ht", trigger_match_ht,
+                     "trigger_match_ht[njets]/O");
 
   double pt[1000];
   ResultTree->Branch("pt", pt, "pt[njets]/D");
@@ -190,6 +211,11 @@ int main(int argc, const char **argv) {
 
       vector<ResultStruct> Result = ppana->GetResult();
       njets = Result.size();
+      // fill the bin with the same run name
+      hEventsRun->Fill(Form("%i", runid1), 1);
+
+
+  
 
       if (njets == 0) {
         ResultTree->Fill();
@@ -199,10 +225,14 @@ int main(int argc, const char **argv) {
       int ijet = 0;
       for (auto &gr : Result) {
         TStarJetVector sv = TStarJetVector(MakeTLorentzVector(gr.orig));
+        new (Jets[ijet]) TStarJetVectorJet(sv);
         neutral_fraction[ijet] =
             gr.orig.user_info<JetAnalysisUserInfo>().GetNumber();
-        trigger_match[ijet] =
-            gr.orig.user_info<JetAnalysisUserInfo>().GetTriggerMatch();
+        trigger_match_jp[ijet] =
+            gr.orig.user_info<JetAnalysisUserInfo>().IsMatchedJP();
+        trigger_match_ht[ijet] =
+            gr.orig.user_info<JetAnalysisUserInfo>().IsMatchedHT();
+
         pt[ijet] = gr.orig.perp();
         n_constituents[ijet] = gr.orig.constituents().size();
         index[ijet] = ijet;

@@ -358,15 +358,20 @@ public:
   float GetNumber() const { return number; };
   void SetNumber(const float f) { number = f; };
 
-  float GetTriggerMatch() const { return triggerMatch; };
-  void SetTriggerMatch(const float f) { triggerMatch = f; };
+  bool IsMatchedJP() const { return match_jp; };
+  void SetMatchJP(const bool b) { match_jp = b; };
+  
+  bool IsMatchedHT() const { return match_ht; };
+  void SetMatchHT(const bool b) { match_ht = b; };
+
 
 private:
   const int quarkcharge; ///< Charge in units of e/3
   const int pid;
   std::string tag;    ///< Multi-purpose
   float number;       ///< Multi-purpose
-  float triggerMatch; ///< Multi-purpose
+  bool match_jp;
+  bool match_ht;
 };
 
 // =============================================================================

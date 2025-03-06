@@ -107,7 +107,7 @@ matching_mc_geant() {
 ####################################################################################################
 # Main script execution
 
-data_types=(mc geant geant_JP2 geant_HT2)
+data_types=(mc geant geant_JP2)
 cleanup
 rerun_trees
 matching_mc_geant
