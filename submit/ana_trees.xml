@@ -2,7 +2,7 @@
 
 <job name="ana_trees_&trigger;_" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false">
 
-        <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/trees_&trigger;.list" nFiles="all" />
+        <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/trees/trees_&trigger;.list" nFiles="all" />
 
         <command>
         @ nFile=0

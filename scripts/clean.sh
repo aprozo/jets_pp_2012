@@ -4,12 +4,18 @@ rm -r *.package/
 
 rm *.zip
 rm schedTemplateExp.xml
-rm -r sched*.package
+rm sched*.package
 rm *.dataset
 
 echo "additional out/ report/ csh/"
-rm submit/scheduler/csh/*
-rm submit/scheduler/list/*
-rm submit/scheduler/report/*
-rm submit/scheduler/gen/*
-rm submit/log/*
+rm -rf submit/scheduler/csh/
+rm -rf submit/scheduler/list/
+rm -rf submit/scheduler/report/
+rm -rf submit/scheduler/gen
+rm -rf submit/log/
+
+mkdir -p submit/scheduler/gen
+mkdir -p submit/scheduler/csh
+mkdir -p submit/scheduler/list
+mkdir -p submit/scheduler/report
+mkdir -p submit/log/

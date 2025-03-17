@@ -17,6 +17,8 @@ bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers,
               float R);
 bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers);
 
+void setTriggerBitMap(TStarJetPicoTriggerInfo *trig,
+                      TStarJetPicoEventHeader *header); 
 // Standard ctor
 ppAnalysis::ppAnalysis(const int argc, const char **const argv) {
   // Parse arguments
@@ -330,11 +332,20 @@ EVENTRESULT ppAnalysis::RunEvent() {
 
     pFullEvent = pReader->GetOutputContainer()->GetArray();
     header = pReader->GetEvent()->GetHeader();
+    // cout << "============================================ " << endl;
 
     for (int i = 0; i < header->GetNOfTrigObjs(); ++i) {
-      triggers.push_back(pReader->GetEvent()->GetTrigObj(i));
+      auto trig = pReader->GetEvent()->GetTrigObj(i);
+      // https://github.com/wsu-yale-rhig/TStarJetPicoMaker/blob/82e051867037038001ea1218256ef48e3dfca9a0/StRoot/JetPicoMaker/StMuJetAnalysisTreeMaker.cxx#L772
+
+      if (trig->GetTriggerFlag() == 5)
+        continue; // skip triggers with BBC decision
+      setTriggerBitMap(trig, header);
+
+      triggers.push_back(trig);
     }
-    // fill remaining triggers positions
+    // fill remaining triggers positions for embedding files where it is not
+    // filled
     for (auto trig : triggers) {
       if (trig->isJP2() || trig->isJP1() || trig->isJP0()) {
         float eta, phi;
@@ -345,24 +356,22 @@ EVENTRESULT ppAnalysis::RunEvent() {
       }
     }
 
-    // cout << "============================================ " << endl;
-
     // for (Int_t i = 0; i < header->GetNOfTriggerIds(); i++) {
     //   trigger_array += Form("%7d ", header->GetTriggerId(i));
     // }
-    // cout << trigger_array << endl;
+    // cout << "event triggers : " << trigger_array << endl;
     // for (auto trig : triggers) {
     //   //  Bitmap
     //   //  last 7 bits :
     //   // |jp2|jp1|jp0|bht3|bht2|bht1|0
-    //   if (!trig->isBHT2())
-    //     continue;
+    //   // if (!trig->isJP2())
+    //   //   continue;
     //   // cout << " BHT2";
-    //   cout << "Trigger: " << trig->GetId();
+    //   // cout << "Trigger: " << trig->GetId();
 
-    //   cout << " ADC: " << trig->GetADC();
-    //   cout << " Eta: " << trig->GetEta();
-    //   cout << " Phi: " << trig->GetPhi();
+    //   // cout << " ADC: " << trig->GetADC();
+    //   // cout << " Eta: " << trig->GetEta();
+    //   // cout << " Phi: " << trig->GetPhi();
     //   cout << " BitMap: " << trig->GetBitMap() << endl;
     // }
 
@@ -373,7 +382,7 @@ EVENTRESULT ppAnalysis::RunEvent() {
     // // (500205) BHT2 trigger Id
     // // (500215) BHT2 trigger Id
     // // (500401) JP2 trigger Id
-    // // (500411)JP2 trigger Id
+    // // (500411) JP2 trigger Id
 
     //    fTrigSel.Contains("ppHT"))
     //    mTrigId==370541 || mTrigId==370542 || mTrigId==370351)   //
@@ -549,9 +558,9 @@ EVENTRESULT ppAnalysis::RunEvent() {
     if (pars.MaxJetNEF < 1.0 && jetptne / jetpttot > pars.MaxJetNEF)
       continue;
 
-    // vector<PseudoJet> constituents = sorted_by_pt(CurrentJet.constituents());
-    // int nparticles = CurrentJet.constituents().size();
-    // if (nparticles == 0)
+    // vector<PseudoJet> constituents =
+    // sorted_by_pt(CurrentJet.constituents()); int nparticles =
+    // CurrentJet.constituents().size(); if (nparticles == 0)
     //   continue;
     // float pTlead = constituents[0].pt();
     // double pT_lead0 = 0;
@@ -634,8 +643,8 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain,
   std::cout << " MaxEventEt:  " << evCuts->GetMaxEventEtCut() << std::endl;
 
   // This method does NOT WORK for GEANT MC trees because everything is in the
-  // tracks... Do it by hand later on, using pars.ManualHtCut; Also doesn't work
-  // for general trees, but there it can't be fixed
+  // tracks... Do it by hand later on, using pars.ManualHtCut; Also doesn't
+  // work for general trees, but there it can't be fixed
 
   // Tracks cuts
   TStarJetPicoTrackCuts *trackCuts = reader.GetTrackCuts();
@@ -681,8 +690,8 @@ void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader) {
   // evCuts->SetMinEventPtCut (-1);
   evCuts->SetMinEventEtCut(-1);
 
-  evCuts->SetPVRankingCutOff(); //  Use SetPVRankingCutOff() to turn off vertex
-                                //  ranking cut.  default is OFF
+  evCuts->SetPVRankingCutOff(); //  Use SetPVRankingCutOff() to turn off
+                                //  vertex ranking cut.  default is OFF
 
   // Tracks cuts
   TStarJetPicoTrackCuts *trackCuts = pReader->GetTrackCuts();
@@ -762,25 +771,25 @@ bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi) {
   // JP0 and JP6 are in the same phi location in the STAR coordinate system.
   // So are JP1 and JP7, etc.
   // JP locations:
-  // Jet Patch# Eta   Phi   Quadrant
-  // 0          0.5   150    10'
-  // 1          0.5   90     12'
-  // 2          0.5   30     2'
-  // 3          0.5  -30     4'
-  // 4          0.5  -90     6'
-  // 5          0.5  -150    8'
-  // 6         -0.5   150    10'
-  // 7         -0.5   90     12'
-  // 8         -0.5   30     2'
-  // 9         -0.5  -30     4'
-  // 10        -0.5  -90     6'
-  // 11        -0.5  -150    8'
-  // 12        -0.1   150    10'
-  // 13        -0.1   90     12'
-  // 14        -0.1   30     2'
-  // 15        -0.1  -30     4'
-  // 16        -0.1  -90     6'
-  // 17        -0.1  -150    8'
+  // Jet Patch# Eta   Phi,degrees(rad)   Quadrant
+  // 0          0.5   150 (2.618)           10'
+  // 1          0.5   90 (1.5708)           12'
+  // 2          0.5   30 (0.5236)            2'
+  // 3          0.5  -30 (-0.5236)           4'
+  // 4          0.5  -90 (-1.5708)           6'
+  // 5          0.5  -150 (2.618)            8'
+  // 6         -0.5   150 (2.618)           10'
+  // 7         -0.5   90 (1.5708)           12'
+  // 8         -0.5   30 (0.5236)            2'
+  // 9         -0.5  -30 (-0.5236)           4'
+  // 10        -0.5  -90 (-1.5708)           6'
+  // 11        -0.5  -150 (2.618)            8'
+  // 12        -0.1   150 (2.618)           10'
+  // 13        -0.1   90 (1.5708)           12'
+  // 14        -0.1   30 (0.5236)            2'
+  // 15        -0.1  -30 (-0.5236)           4'
+  // 16        -0.1  -90 (-1.5708)           6'
+  // 17        -0.1  -150 (2.618)            8'
 
   // http://drupal.star.bnl.gov/STAR/system/files/BEMC_y2004.pdf
 
@@ -825,4 +834,62 @@ bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers) {
     }
   }
   return false;
+}
+
+void setTriggerBitMap(TStarJetPicoTriggerInfo *trig,
+  TStarJetPicoEventHeader *header){
+Int_t trigMap = 0;
+// bitmap layout :
+// bit 1: barrel high tower 1
+// bit 2: barrel high tower 2
+// bit 3: barrel high tower 3
+// bit 4: jet patch 0
+// bit 5: jet patch 1
+// bit 6: jet patch 2
+// bit 7-31: open
+// valid only for pp12 data:
+header->SetJetPatchThreshold(0, 20);  // jp0
+header->SetJetPatchThreshold(1, 28);  // jp1
+header->SetJetPatchThreshold(2, 36);  // jp2
+header->SetHighTowerThreshold(0, 11); // bht0
+header->SetHighTowerThreshold(1, 15); // bht1
+header->SetHighTowerThreshold(2, 18); // bht2
+header->SetHighTowerThreshold(3, 8);  // bht3
+// //  ADC values:
+// // fHighTowerThreshold[4] = 11 , 15 , 18 , 8  - bht0, bht1, bht2, bht3
+// // fJetPatchThreshold[3]  = 20 , 28 , 36  -     jp0, jp1, jp2
+
+float eta = trig->GetEta();
+if (trig->GetId() <= 17 && (eta == 0.5 || eta == -0.5 || eta == -0.1 ||
+          eta == 0.)) // it means jp ids
+{
+Int_t jpAdc = trig->GetADC();
+UInt_t jp0 = header->GetJetPatchThreshold(0);
+UInt_t jp1 = header->GetJetPatchThreshold(1);
+UInt_t jp2 = header->GetJetPatchThreshold(2);
+
+if (jp0 > 0 && jpAdc > jp0)
+trigMap |= 1 << 4;
+if (jp1 > 0 && jpAdc > jp1)
+trigMap |= 1 << 5;
+if (jp2 > 0 && jpAdc > jp2)
+trigMap |= 1 << 6;
+
+trig->SetBitMap(trigMap);
+} else // it means bht
+{
+Int_t bhtAdc = trig->GetADC();
+UInt_t bht1 = header->GetHighTowerThreshold(1);
+UInt_t bht2 = header->GetHighTowerThreshold(2);
+UInt_t bht3 = header->GetHighTowerThreshold(3);
+
+if (bht1 > 0 && bhtAdc > bht1)
+trigMap |= 1 << 1;
+if (bht2 > 0 && bhtAdc > bht2)
+trigMap |= 1 << 2;
+if (bht3 > 0 && bhtAdc > bht3)
+trigMap |= 1 << 3;
+
+trig->SetBitMap(trigMap);
+}
 }

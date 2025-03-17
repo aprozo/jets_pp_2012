@@ -2,7 +2,7 @@
 
 <job name="jets_&trigger;_" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false">
 
-        <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/data_file_&trigger;.list" nFiles="all" />
+        <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/data/data_file_&trigger;.list" nFiles="all" />
 
         <command>
         @ nFile=0

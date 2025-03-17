@@ -18,7 +18,7 @@
         <Generator> 
                 <Location>/gpfs01/star/pwg/prozorov/jets_pp_2012/ppRun12Datapicos/submit/gen/</Location> 
         </Generator>
-        <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/ppRun12Datapicos/ppHT2Run12/split/" />
+        <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/ppRun12Datapicos/ppJP2Run12/split/" />
         <output fromScratch="*.log" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/ppRun12Datapicos/submit/log/" />
         
         <SandBox>

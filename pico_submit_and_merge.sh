@@ -17,7 +17,7 @@ submit_tree_create() {
     echo "submitting $data_type"
     mkdir -p output/$data_type
     # check if data_file_$data_type.list exists
-    if [ ! -f lists/data_file_$data_type.list ]; then
+    if [ ! -f lists/data/data_file_$data_type.list ]; then
         echo "data_file_$data_type.list does not exist"
         break
     fi
@@ -27,7 +27,7 @@ submit_tree_create() {
 # Function to send analysis
 submit_analysis() {
     local data_type=$1
-    ls -d $PWD/output/$data_type/*.root >lists/trees_$data_type.list
+    ls -d $PWD/output/$data_type/*.root >lists/trees/trees_$data_type.list
     mkdir -p output/$data_type/hists
     star-submit-template -template submit/ana_trees.xml -entities trigger=$data_type
 }
@@ -62,7 +62,7 @@ rerun_trees() {
     echo "========================================"
     echo "=========trees are finished============="
     for data_type in ${data_types[@]}; do
-        ls -d $PWD/output/$data_type/*.root >lists/trees_$data_type.list
+        ls -d $PWD/output/$data_type/*.root >lists/trees/trees_$data_type.list
     done
 
 }
@@ -107,8 +107,8 @@ matching_mc_geant() {
 ####################################################################################################
 # Main script execution
 
-data_types=(mc geant geant_JP2)
+data_types=(JP2 MB)
 cleanup
 rerun_trees
-matching_mc_geant
+# matching_mc_geant
 # run_analysis

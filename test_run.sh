@@ -21,15 +21,22 @@
 
 # cp tree_pt-hat2535_35.root tree_pt-hat2535_35_geant.root
 
+
+
+#test embedding
 # singularity exec -e \
 #     -B $PWD star_star.simg \
 #     bash ./container.sh output/test/pt-hat2535_35.root mc
 
-# cp tree_pt-hat2535_35.root tree_pt-hat2535_35_mc.root
 
-
+# test JP2 data
 singularity exec -e \
     -B $PWD star_star.simg \
-    bash ./container_matching_mc_reco.sh tree_pt-hat1115_066.root matching_test_tree.root
+    bash ./container.sh ppRun12Datapicos/ppJP2Run12/split/sum0_part1.root JP2
+
+# test matching in embedding
+# singularity exec -e \
+#     -B $PWD star_star.simg \
+#     bash ./container_matching_mc_reco.sh tree_pt-hat1115_066.root matching_test_tree.root
 
 
