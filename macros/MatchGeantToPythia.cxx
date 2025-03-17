@@ -272,7 +272,6 @@ int MatchGeantToPythia(TString mcTreeName, TString OutFile = "test.root") {
                       mc.weight, mc.mult, mc.is_rejected, mc.vz));
     } // end of mcjet loop
 
-    cout << "Number of jets in this event is " << mcresult.size() << endl;
     int recoEvent = RecoChain->GetEntryNumberWithIndex(mc.runid, mc.eventid);
 
     vector<JetWithInfo> recoresult;
