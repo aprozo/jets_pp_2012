@@ -1,0 +1,14 @@
+channels:
+  - conda-forge
+dependencies:
+  - root
+  - pandas
+  - numpy
+  - matplotlib
+  - awkward
+  - uproot
+  - ipykernel
+  - wheel
+  - jupyter 
+  - metakernel 
+  - distributed 
