@@ -41,6 +41,7 @@ void checkExistence(TFile *file, TString name) {
 int ana_trees_simple(TString OutFile = "hists2.root") {
 
   gStyle->SetOptStat(0);
+  TH1::SetDefaultSumw2();
   float RCut = 0.6;
   float EtaCut = 1.0 - RCut;
 
@@ -94,11 +95,35 @@ int ana_trees_simple(TString OutFile = "hists2.root") {
 
   //================================================================================================
 
-  TFile *mb_hist_file = new TFile("hists_mb.root", "READ");
-  // TFile *mb_hist_file = new TFile("hists.root", "READ");
-  TH1D *hPtMb = (TH1D *)mb_hist_file->Get("hPtMb");
+  TFile *mb_hist_file = new TFile(
+      "/home/prozorov/dev/star/jets_pp_2012/output/jets_MB.root", "READ");
 
-  TFile *jp2_jets = new TFile("../tree_jets.root", "READ");
+  TTree *mb_tree = (TTree *)mb_hist_file->Get("ResultTree");
+
+  TH1D *hPtMb =
+      new TH1D("hPtMb", "; p_{T} (GeV/c); Entries (per event)", 100, 0, 100);
+
+  InputTreeEntry mb;
+  mb_tree->SetBranchAddress("runid1", &mb.runid1);
+  mb_tree->SetBranchAddress("pt", mb.pt);
+
+  for (int i = 0; i < mb_tree->GetEntries(); ++i) {
+    mb_tree->GetEntry(i);
+    //   show progress
+    int run = mb.runid1;
+    TString runstring = Form("%i", run);
+    int binRun = nEvents_MB->GetXaxis()->FindBin(Form("%i", run));
+    double events_in_run = nEvents_MB->GetBinContent(binRun);
+
+    double total_weight = events_in_run;
+
+    for (int j = 0; j < mb.njets; ++j) {
+      hPtMb->Fill(mb.pt[j], 1. / total_weight);
+    }
+  }
+
+  TFile *jp2_jets = new TFile(
+      "/home/prozorov/dev/star/jets_pp_2012/output/jets_JP2.root", "READ");
   if (!jp2_jets || jp2_jets->IsZombie()) {
     cout << "Error: JP2 tree file not found!" << endl;
     return -1;
@@ -155,6 +180,11 @@ int ana_trees_simple(TString OutFile = "hists2.root") {
       JP2->Fill(jp2.pt[j], 1. / total_weight);
       JP2_run->Fill(jp2.pt[j], runstring, 1. / total_weight);
 
+      if (!jp2.trigger_match[j])
+        continue;
+      JP2_MatchTrigger->Fill(jp2.pt[j], 1. / total_weight);
+      JP2_run_MatchTrigger->Fill(jp2.pt[j], runstring, 1. / total_weight);
+
       total_weight *= weight_livetime;
       JP2_Livetime->Fill(jp2.pt[j], 1. / total_weight);
       JP2_run_Livetime->Fill(jp2.pt[j], runstring, 1. / total_weight);
@@ -166,11 +196,6 @@ int ana_trees_simple(TString OutFile = "hists2.root") {
       total_weight *= weight_prescale;
       JP2_Prescale->Fill(jp2.pt[j], 1. / total_weight);
       JP2_run_Prescale->Fill(jp2.pt[j], runstring, 1. / total_weight);
-
-      if (jp2.trigger_match[j]) {
-        JP2_MatchTrigger->Fill(jp2.pt[j], 1. / total_weight);
-        JP2_run_MatchTrigger->Fill(jp2.pt[j], runstring, 1. / total_weight);
-      }
     }
   }
 
@@ -179,11 +204,11 @@ int ana_trees_simple(TString OutFile = "hists2.root") {
   TLegend *leg = new TLegend(0.6, 0.7, 0.9, 0.9);
   leg->AddEntry(hPtMb, "MB", "l");
   leg->AddEntry(JP2, "JP2", "pel");
+  leg->AddEntry(JP2_MatchTrigger, "+MatchTrigger", "l");
   leg->AddEntry(JP2_Livetime, "+Livetime", "l");
   leg->AddEntry(JP2_Prescale, "+Livetime+Prescale", "l");
   leg->AddEntry(JP2_MaxNEvents, "+Livetime+Prescale+MaxEvents", "l");
-  leg->AddEntry(JP2_MatchTrigger, "+Livetime+Prescale+MaxEvents+MatchTrigger",
-                "l");
+
   JP2->SetLineColor(2009);
   JP2_Livetime->SetLineColor(2001);
   JP2_Prescale->SetLineColor(2002);
