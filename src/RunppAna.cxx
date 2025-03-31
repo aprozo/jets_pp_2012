@@ -77,12 +77,13 @@ int main(int argc, const char **argv) {
   // --------------------
   TFile *fout = new TFile(pars.OutFileName, "RECREATE");
 
-  TH1D *hEventCounter = new TH1D("hEventCounter", "Event Counter", 5, 0, 5);
+  TH1D *hEventCounter = new TH1D("hEventCounter", "Event Counter", 6, 0, 6);
   hEventCounter->GetXaxis()->SetBinLabel(1, "ALL");
-  hEventCounter->GetXaxis()->SetBinLabel(2, "JETSFOUND");
-  hEventCounter->GetXaxis()->SetBinLabel(3, "NOJETS");
-  hEventCounter->GetXaxis()->SetBinLabel(4, "NOCONSTS");
-  hEventCounter->GetXaxis()->SetBinLabel(5, "NOTACCEPTED");
+  hEventCounter->GetXaxis()->SetBinLabel(2, "AFTER_VERTEX");
+  hEventCounter->GetXaxis()->SetBinLabel(3, "JETSFOUND");
+  hEventCounter->GetXaxis()->SetBinLabel(4, "NOJETS");
+  hEventCounter->GetXaxis()->SetBinLabel(5, "NOCONSTS");
+  hEventCounter->GetXaxis()->SetBinLabel(6, "NOTACCEPTED");
 
   TString csvfile = "lists/good_run_list.list";
   vector<int> goodruns;
@@ -91,14 +92,18 @@ int main(int argc, const char **argv) {
     return -1;
   }
 
-  TH1D *hEventsRun =
-      new TH1D("hEventsRun", "Events per run", goodruns.size(), 0, goodruns.size());
-  
+  TH1D *hEventsRun = new TH1D("hEventsRun", "Events per run", goodruns.size(),
+                              0, goodruns.size());
+                    
+  TH1D *hVertexZ = new TH1D("hVertexZ", "hVertexZ; vz, cm",1000,-100, 100);
+
+
   // set names of bins to run numbers
   for (unsigned int i = 0; i < goodruns.size(); ++i) {
     hEventsRun->GetXaxis()->SetBinLabel(i + 1, Form("%d", goodruns[i]));
   }
 
+  TH1D * hEventsRunBeforeVertex=(  TH1D * ) hEventsRun->Clone("hEventsRunBeforeVertex");
 
 
   // Save results
@@ -132,12 +137,12 @@ int main(int argc, const char **argv) {
   double neutral_fraction[1000];
   ResultTree->Branch("neutral_fraction", neutral_fraction,
                      "neutral_fraction[njets]/D");
-  bool trigger_match_jp[1000];
-  ResultTree->Branch("trigger_match_jp", trigger_match_jp,
-                     "trigger_match_jp[njets]/O");
-  bool trigger_match_ht[1000];
-  ResultTree->Branch("trigger_match_ht", trigger_match_ht,
-                     "trigger_match_ht[njets]/O");
+  bool trigger_match_JP2[1000];
+  ResultTree->Branch("trigger_match_JP2", trigger_match_JP2,
+                     "trigger_match_JP2[njets]/O");
+  bool trigger_match_HT2[1000];
+  ResultTree->Branch("trigger_match_HT2", trigger_match_HT2,
+                     "trigger_match_HT2[njets]/O");
 
   double pt[1000];
   ResultTree->Branch("pt", pt, "pt[njets]/D");
@@ -161,7 +166,7 @@ int main(int argc, const char **argv) {
 
       Jets.Clear();
       EVENTRESULT ret = ppana->RunEvent(); // event observables reset here
-      hEventCounter->Fill("ALL", 1);
+     
       // Understand what happened in the event
       switch (ret) {
       case EVENTRESULT::PROBLEM:
@@ -174,19 +179,15 @@ int main(int argc, const char **argv) {
         continue;
         break;
       case EVENTRESULT::NOTACCEPTED:
-        hEventCounter->Fill("NOTACCEPTED", 1);
         // continue;
         break;
       case EVENTRESULT::NOCONSTS:
-        hEventCounter->Fill("NOCONSTS", 1);
         // cout << "Event empty." << endl;
         break;
       case EVENTRESULT::NOJETS:
-        hEventCounter->Fill("NOJETS", 1);
         // cout << "No jets found." << endl;
         break;
       case EVENTRESULT::JETSFOUND:
-        hEventCounter->Fill("JETSFOUND", 1);
         // The only way not to break out or go back to the top
         // cout << "Jets found." << endl;
         break;
@@ -195,6 +196,31 @@ int main(int argc, const char **argv) {
         return -1;
         break;
       }
+      hEventCounter->Fill("ALL", 1);
+
+      vz = ppana->GetVz();
+      runid1 = ppana->GetRunid1();
+
+      hVertexZ->Fill(vz);
+      hEventsRunBeforeVertex->Fill(Form("%i", runid1), 1);
+      if (fabs(vz) > 30) {
+        continue;
+      }
+      hEventCounter->Fill("AFTER_VERTEX", 1);
+
+
+      if (ret==EVENTRESULT::JETSFOUND){
+        hEventCounter->Fill("JETSFOUND", 1);
+      }
+      else if (ret==EVENTRESULT::NOCONSTS){
+        hEventCounter->Fill("NOCONSTS", 1);
+      }
+      else if (ret==EVENTRESULT::NOJETS){
+        hEventCounter->Fill("NOJETS", 1);
+      }
+      else if (ret==EVENTRESULT::NOTACCEPTED){
+        hEventCounter->Fill("NOTACCEPTED", 1);
+      }
 
       // Now we can pull out details and results
       // ---------------------------------------
@@ -202,9 +228,7 @@ int main(int argc, const char **argv) {
       weight = ppana->GetEventWeight();
       refmult = ppana->GetRefmult();
       runid = ppana->GetRunid();
-      runid1 = ppana->GetRunid1();
       eventid = ppana->GetEventid();
-      vz = ppana->GetVz();
       mult = ppana->GetEventMult();
       event_sum_pt = ppana->GetEventSumPt();
       is_rejected = ppana->GetRejectCode();
@@ -214,13 +238,8 @@ int main(int argc, const char **argv) {
       // fill the bin with the same run name
       hEventsRun->Fill(Form("%i", runid1), 1);
 
-
-  
-
-      if (njets == 0) {
-        ResultTree->Fill();
+      if (njets == 0)
         continue;
-      }
 
       int ijet = 0;
       for (auto &gr : Result) {
@@ -228,9 +247,9 @@ int main(int argc, const char **argv) {
         new (Jets[ijet]) TStarJetVectorJet(sv);
         neutral_fraction[ijet] =
             gr.orig.user_info<JetAnalysisUserInfo>().GetNumber();
-        trigger_match_jp[ijet] =
+        trigger_match_JP2[ijet] =
             gr.orig.user_info<JetAnalysisUserInfo>().IsMatchedJP();
-        trigger_match_ht[ijet] =
+        trigger_match_HT2[ijet] =
             gr.orig.user_info<JetAnalysisUserInfo>().IsMatchedHT();
 
         pt[ijet] = gr.orig.perp();

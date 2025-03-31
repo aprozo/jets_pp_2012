@@ -7,6 +7,8 @@ export JETREADER=/usr/local/jetreader_build
 export LD_LIBRARY_PATH=/usr/local/jetreader_build/lib:/lib/:/usr/local/eventStructuredAu:/usr/local/RooUnfold:/usr/local/fastjet/lib:/usr/local/root/lib::/.singularity.d/libs
 input_file=${1}
 output_file=$(basename $input_file)
+# # add type to output file name
+# output_file="${output_file%.*}_${2}.root"
 data_type=${2}
 
 rm bin/RunppAna
@@ -20,25 +22,11 @@ jet_min_pt=5
 
 # Determine trigger type and tree/pico settings based on data_type
 case "$data_type" in
-HT2)
-    trigger="ppHT"
-    ;;
-JP2)
-    trigger="ppJP"
-    ;;
 mc)
     treeType="JetTreeMc"
     picoType="mcpico"
     ;;
 geant)
-    jet_min_pt=5
-    ;;
-geant_JP2)
-    trigger="ppJP"
-    jet_min_pt=5
-    ;;
-geant_HT2)
-    trigger="ppHT"
     jet_min_pt=5
     ;;
 
@@ -60,7 +48,7 @@ args=(
     -pc 0.2 30
     -lja "antikt"
     -ec 1
-    -R 0.4
+    -R 0.6
     -geantnum 1
 )
 # Append hadronic correction argument if running on Monte Carlo data
@@ -68,7 +56,6 @@ if [[ $data_type == "geant" ]]; then
     args+=(-hadcorr 0.9999999)
     args+=(-towunc 0)
     args+=(-fakeeff 1)
-    
 fi
 
 if [[ $data_type == "mc" ]]; then

@@ -11,14 +11,13 @@ using std::cout;
 using std::endl;
 
 bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi);
-float trigger_match(vector<TStarJetPicoTriggerInfo *> triggers, PseudoJet &jet,
-                    TString TriggerName, float R);
+
 bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers,
               float R);
-bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers);
+bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R);
 
 void setTriggerBitMap(TStarJetPicoTriggerInfo *trig,
-                      TStarJetPicoEventHeader *header); 
+                      TStarJetPicoEventHeader *header);
 // Standard ctor
 ppAnalysis::ppAnalysis(const int argc, const char **const argv) {
   // Parse arguments
@@ -318,6 +317,12 @@ EVENTRESULT ppAnalysis::RunEvent() {
   njets = 0;
   vz = 999;
   particles.clear();
+
+  // cout <<"============================================" << endl;
+  // cout <<"===================New event================" << endl;
+  // cout <<"============================================" << endl;
+
+
   TString trigger_array = "";
   switch (pars.intype) {
     // =====================================================
@@ -337,17 +342,23 @@ EVENTRESULT ppAnalysis::RunEvent() {
     for (int i = 0; i < header->GetNOfTrigObjs(); ++i) {
       auto trig = pReader->GetEvent()->GetTrigObj(i);
       // https://github.com/wsu-yale-rhig/TStarJetPicoMaker/blob/82e051867037038001ea1218256ef48e3dfca9a0/StRoot/JetPicoMaker/StMuJetAnalysisTreeMaker.cxx#L772
-
+      // check if triggerBitMap are not set to zero
       if (trig->GetTriggerFlag() == 5)
         continue; // skip triggers with BBC decision
-      setTriggerBitMap(trig, header);
+      // check if triggermap is 0 and fill it
 
+      setTriggerBitMap(trig, header);
+      
       triggers.push_back(trig);
     }
     // fill remaining triggers positions for embedding files where it is not
     // filled
     for (auto trig : triggers) {
       if (trig->isJP2() || trig->isJP1() || trig->isJP0()) {
+        // don't do anything if eta and phi are not 0
+        if (trig->GetEta() != 0 && trig->GetPhi() != 0)
+          continue;
+
         float eta, phi;
         if (getBarrelJetPatchEtaPhi(trig->GetId(), eta, phi)) {
           trig->SetEta(eta);
@@ -360,6 +371,7 @@ EVENTRESULT ppAnalysis::RunEvent() {
     //   trigger_array += Form("%7d ", header->GetTriggerId(i));
     // }
     // cout << "event triggers : " << trigger_array << endl;
+
     // for (auto trig : triggers) {
     //   //  Bitmap
     //   //  last 7 bits :
@@ -367,11 +379,10 @@ EVENTRESULT ppAnalysis::RunEvent() {
     //   // if (!trig->isJP2())
     //   //   continue;
     //   // cout << " BHT2";
-    //   // cout << "Trigger: " << trig->GetId();
-
-    //   // cout << " ADC: " << trig->GetADC();
-    //   // cout << " Eta: " << trig->GetEta();
-    //   // cout << " Phi: " << trig->GetPhi();
+    //   cout << "Trigger: " << trig->GetId();
+    //   cout << " ADC: " << trig->GetADC();
+    //   cout << " Eta: " << trig->GetEta();
+    //   cout << " Phi: " << trig->GetPhi();
     //   cout << " BitMap: " << trig->GetBitMap() << endl;
     // }
 
@@ -498,24 +509,25 @@ EVENTRESULT ppAnalysis::RunEvent() {
 
   JetAnalyzer &JA = *pJA;
   vector<PseudoJet> JAResult = sorted_by_pt(select_jet(JA.inclusive_jets()));
-
   if (JAResult.size() == 0) {
     return EVENTRESULT::NOJETS;
   }
 
   // check if the event has high weight or large |vz|
-  if ((pars.InputName.Contains("hat23_") && JAResult[0].perp() > 6.0) ||
-      (pars.InputName.Contains("hat34_") && JAResult[0].perp() > 8.0) ||
-      (pars.InputName.Contains("hat45_") && JAResult[0].perp() > 10.0) ||
-      (pars.InputName.Contains("hat57_") && JAResult[0].perp() > 14.0) ||
-      (pars.InputName.Contains("hat79_") && JAResult[0].perp() > 18.0) ||
-      (pars.InputName.Contains("hat911_") && JAResult[0].perp() > 22.0) ||
-      (pars.InputName.Contains("hat1115_") && JAResult[0].perp() > 30.0) ||
-      (pars.InputName.Contains("hat1520_") && JAResult[0].perp() > 40.0) ||
-      (pars.InputName.Contains("hat2025_") && JAResult[0].perp() > 50.0) ||
-      (pars.InputName.Contains("hat2535_") && JAResult[0].perp() > 70.0) ||
-      (pars.InputName.Contains("hat3545_") && JAResult[0].perp() > 90.0) ||
-      (pars.InputName.Contains("hat4555_") && JAResult[0].perp() > 110.0) ||
+  double pthat_mult=1.5; 
+
+  if ((pars.InputName.Contains("hat23_") && JAResult[0].perp() > 3.0*pthat_mult) ||
+      (pars.InputName.Contains("hat34_") && JAResult[0].perp() > 4.0*pthat_mult)||
+      (pars.InputName.Contains("hat45_") && JAResult[0].perp() > 5.0*pthat_mult)||
+      (pars.InputName.Contains("hat57_") && JAResult[0].perp() > 7.0*pthat_mult)||
+      (pars.InputName.Contains("hat79_") && JAResult[0].perp() > 9.0*pthat_mult)||
+      (pars.InputName.Contains("hat911_") && JAResult[0].perp() > 11.0*pthat_mult)||
+      (pars.InputName.Contains("hat1115_") && JAResult[0].perp() > 15.0*pthat_mult)||
+      (pars.InputName.Contains("hat1520_") && JAResult[0].perp() > 20.0*pthat_mult)||
+      (pars.InputName.Contains("hat2025_") && JAResult[0].perp() > 25.0*pthat_mult)||
+      (pars.InputName.Contains("hat2535_") && JAResult[0].perp() > 35.0*pthat_mult)||
+      (pars.InputName.Contains("hat3545_") && JAResult[0].perp() > 45.0*pthat_mult)||
+      (pars.InputName.Contains("hat4555_") && JAResult[0].perp() > 55.0*pthat_mult)||
       (pars.InputName.Contains("hat55999_") && JAResult[0].perp() > 1000.0)) {
     is_rejected = true;
     return EVENTRESULT::NOTACCEPTED;
@@ -530,14 +542,10 @@ EVENTRESULT ppAnalysis::RunEvent() {
     PseudoJet ChargedPart = join(OnlyCharged(CurrentJet.constituents()));
 
     bool is_matched_jp = match_jp(CurrentJet, triggers, pars.R);
-    bool is_matched_ht = match_ht(CurrentJet, triggers);
+    bool is_matched_ht = match_ht(CurrentJet, triggers, pars.R);
 
     double jetptne = 0.0;
     double jetpttot = 0.0;
-    double q = 0;
-    for (PseudoJet &c : ChargedPart.constituents()) {
-      q += c.user_info<JetAnalysisUserInfo>().GetQuarkCharge() / 3.0;
-    }
 
     for (PseudoJet &n : NeutralPart.constituents()) {
       jetptne += n.perp();
@@ -624,7 +632,7 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain,
   // Event and track selection
   // -------------------------
   TStarJetPicoEventCuts *evCuts = reader.GetEventCuts();
-  evCuts->SetTriggerSelection(pars.TriggerName); // All, MB, HT, pp, ppHT, ppJP
+  evCuts->SetTriggerSelection("All"); // All, MB, HT, pp, ppHT, ppJP
   // Additional cuts
   evCuts->SetVertexZCut(pars.VzCut);
   evCuts->SetRefMultCut(pars.RefMultCut);
@@ -820,76 +828,102 @@ bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers,
   return false;
 }
 
-bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers) {
-  for (auto trigger : triggers) {
-    if (trigger->isBHT2()) {
-      int trigger_towerid = trigger->GetId();
-      PseudoJet NeutralPart = join(OnlyNeutral(jet.constituents()));
-      for (PseudoJet &part : NeutralPart.constituents()) {
-        if (part.user_info<JetAnalysisUserInfo>().GetNumber() ==
-            trigger_towerid) {
-          return true;
+bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R) {
+
+  // print jet towers:
+  PseudoJet NeutralPart = join(OnlyNeutral(jet.constituents()));
+    for (auto trigger : triggers) {
+  
+      if (trigger->isBHT2()) {
+        int trigger_towerid = trigger->GetId();        
+        for (PseudoJet &part : NeutralPart.constituents()) {
+          if (part.user_info<JetAnalysisUserInfo>().GetNumber() ==
+              trigger_towerid) {
+
+            return true;
+          }
         }
+
+        double eta = trigger->GetEta();
+        double phi = trigger->GetPhi();
+        double deta = jet.eta() - eta;
+        double dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
+        if ((fabs(deta) < R) && (fabs(dphi) <R))
+          return true; 
       }
     }
+    return false;
   }
-  return false;
-}
 
 void setTriggerBitMap(TStarJetPicoTriggerInfo *trig,
-  TStarJetPicoEventHeader *header){
-Int_t trigMap = 0;
-// bitmap layout :
-// bit 1: barrel high tower 1
-// bit 2: barrel high tower 2
-// bit 3: barrel high tower 3
-// bit 4: jet patch 0
-// bit 5: jet patch 1
-// bit 6: jet patch 2
-// bit 7-31: open
-// valid only for pp12 data:
-header->SetJetPatchThreshold(0, 20);  // jp0
-header->SetJetPatchThreshold(1, 28);  // jp1
-header->SetJetPatchThreshold(2, 36);  // jp2
-header->SetHighTowerThreshold(0, 11); // bht0
-header->SetHighTowerThreshold(1, 15); // bht1
-header->SetHighTowerThreshold(2, 18); // bht2
-header->SetHighTowerThreshold(3, 8);  // bht3
-// //  ADC values:
-// // fHighTowerThreshold[4] = 11 , 15 , 18 , 8  - bht0, bht1, bht2, bht3
-// // fJetPatchThreshold[3]  = 20 , 28 , 36  -     jp0, jp1, jp2
+                      TStarJetPicoEventHeader *header) {
 
-float eta = trig->GetEta();
-if (trig->GetId() <= 17 && (eta == 0.5 || eta == -0.5 || eta == -0.1 ||
-          eta == 0.)) // it means jp ids
-{
-Int_t jpAdc = trig->GetADC();
-UInt_t jp0 = header->GetJetPatchThreshold(0);
-UInt_t jp1 = header->GetJetPatchThreshold(1);
-UInt_t jp2 = header->GetJetPatchThreshold(2);
+  // check if trigmap is not 0
+  std::bitset<32> original_bitmap = trig->GetBitMap();
+  Int_t trigMap = original_bitmap.to_ulong(); // get the original bitmap
+  if (trigMap != 0) {
+    return; // if the bitmap is already set, no need to set it again
+  }
+  // bitmap layout :
+  // bit 1: barrel high tower 1
+  // bit 2: barrel high tower 2
+  // bit 3: barrel high tower 3
+  // bit 4: jet patch 0
+  // bit 5: jet patch 1
+  // bit 6: jet patch 2
+  // bit 7-31: open
+  // valid only for pp12 data:
+  header->SetJetPatchThreshold(0, 20);  // jp0
+  header->SetJetPatchThreshold(1, 28);  // jp1
+  header->SetJetPatchThreshold(2, 36);  // jp2
+  header->SetHighTowerThreshold(0, 11); // bht0
+  header->SetHighTowerThreshold(1, 15); // bht1
+  header->SetHighTowerThreshold(2, 18); // bht2
+  header->SetHighTowerThreshold(3, 8);  // bht3
+  // //  ADC values:
+  // // fHighTowerThreshold[4] = 11 , 15 , 18 , 8  - bht0, bht1, bht2, bht3
+  // // fJetPatchThreshold[3]  = 20 , 28 , 36  -     jp0, jp1, jp2
 
-if (jp0 > 0 && jpAdc > jp0)
-trigMap |= 1 << 4;
-if (jp1 > 0 && jpAdc > jp1)
-trigMap |= 1 << 5;
-if (jp2 > 0 && jpAdc > jp2)
-trigMap |= 1 << 6;
+  Float_t eta= trig->GetEta();
+  // compare eta to -0.100000
+  bool jp_eta_flag=false;
+  if (eta > -0.10000001 && eta <-0.09999999999)
+    jp_eta_flag=true;
+  else if (eta==0.5||eta==-0.5)
+    jp_eta_flag=true;
 
-trig->SetBitMap(trigMap);
-} else // it means bht
-{
-Int_t bhtAdc = trig->GetADC();
-UInt_t bht1 = header->GetHighTowerThreshold(1);
-UInt_t bht2 = header->GetHighTowerThreshold(2);
-UInt_t bht3 = header->GetHighTowerThreshold(3);
+  
+  if (trig->GetId() <= 17 && jp_eta_flag)
+  {
 
-if (bht1 > 0 && bhtAdc > bht1)
-trigMap |= 1 << 1;
-if (bht2 > 0 && bhtAdc > bht2)
-trigMap |= 1 << 2;
-if (bht3 > 0 && bhtAdc > bht3)
-trigMap |= 1 << 3;
+    Int_t jpAdc = trig->GetADC();
+    UInt_t jp0 = header->GetJetPatchThreshold(0);
+    UInt_t jp1 = header->GetJetPatchThreshold(1);
+    UInt_t jp2 = header->GetJetPatchThreshold(2);
 
-trig->SetBitMap(trigMap);
-}
+    if (jp0 > 0 && jpAdc > jp0)
+      trigMap |= 1 << 4;
+    if (jp1 > 0 && jpAdc > jp1)
+      trigMap |= 1 << 5;
+    if (jp2 > 0 && jpAdc > jp2)
+      trigMap |= 1 << 6;
+
+    trig->SetBitMap(trigMap);
+  } 
+  else // it means bht
+  {
+    Int_t bhtAdc = trig->GetADC();
+    UInt_t bht1 = header->GetHighTowerThreshold(1);
+    UInt_t bht2 = header->GetHighTowerThreshold(2);
+    UInt_t bht3 = header->GetHighTowerThreshold(3);
+
+    if (bht1 > 0 && bhtAdc > bht1)
+      trigMap |= 1 << 1;
+    if (bht2 > 0 && bhtAdc > bht2)
+      trigMap |= 1 << 2;
+    if (bht3 > 0 && bhtAdc > bht3)
+      trigMap |= 1 << 3;
+
+    trig->SetBitMap(trigMap);
+  }
 }

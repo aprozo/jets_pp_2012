@@ -59,11 +59,17 @@ struct InputTreeEntry {
 
 
 int ana_trees(TString inputTreeName= "output/JP2/tree_sum0_part0.root", TString OutFile = "test.root") {
-  float RCut = 0.4;
+  float RCut = 0.6;
   float EtaCut = 1.0 - RCut;
 
-  TFile *eventsFile = new TFile("events.root", "READ");
-  TH1D *hEventsRatio = (TH1D *)eventsFile->Get("hEventsRun_JP2");
+  // TFile *eventsFile = new TFile("events.root", "READ");
+  // TH1D *weights = (TH1D *)eventsFile->Get("hist_JP2_weight");
+  // TH1D * nEvents_MB = (TH1D *)eventsFile->Get("hEventsRun_MB");
+  // TH1D * nEvents_JP2 = (TH1D *)eventsFile->Get("hEventsRun_JP2");
+
+  // TH1D * JP2_scaled = (TH1D *)nEvents_JP2->Clone("JP2_scaled");
+  // JP2_scaled->Multiply(weights); // scale the JP2 events by the weights
+
 
   // =================================================================================================
   TFile *inputFile = new TFile(inputTreeName, "READ");

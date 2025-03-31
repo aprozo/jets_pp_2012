@@ -38,7 +38,7 @@ class ppParameters
 {
 
 public :
-  double R = 0.4;            ///< Resolution parameter ("radius").
+  double R = 0.6;            ///< Resolution parameter ("radius").
 
   /// Jet algorithm for the original jets
   JetAlgorithm LargeJetAlgorithm = fastjet::antikt_algorithm;
@@ -72,7 +72,7 @@ public :
 
   double RefMultCut = 0; ///< Reference multiplicity. Needs to be rethought to accomodate pp and AuAu
 
-  double VzCut = 30; ///< Vertex z
+  double VzCut = 99999; ///< Vertex z
   // const double VzDiffCut=6;         ///< |Vz(TPC) - Vz(VPD)| <-- NOT WORKING in older data (no VPD)
   double VzDiffCut = 99999; ///< |Vz(TPC) - Vz(VPD)|
 
