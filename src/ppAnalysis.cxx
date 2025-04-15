@@ -431,6 +431,12 @@ EVENTRESULT ppAnalysis::RunEvent() {
   for (int i = 0; i < pFullEvent->GetEntries(); ++i) {
     sv = (TStarJetVector *)pFullEvent->At(i);
 
+    // skip towers to get charged jets
+
+    if (sv->GetCharge() == 0 ) {
+      continue;
+    }
+
     // Ensure kinematic similarity
     if (sv->Pt() < pars.PtConsMin || sv->Pt() > pars.PtConsMax)
       continue;
@@ -455,6 +461,10 @@ EVENTRESULT ppAnalysis::RunEvent() {
         sv_mass = pid->Mass(); //! tracks get pion mass
       else
         sv_mass = 0.0; //! towers get photon mass ~ 0
+
+  
+
+      
       double E = TMath::Sqrt(sv->P() * sv->P() + sv_mass * sv_mass);
 
       sv->SetPxPyPzE(sv->Px(), sv->Py(), sv->Pz(), E);
@@ -592,6 +602,7 @@ EVENTRESULT ppAnalysis::RunEvent() {
     //   pT_lead7 = CurrentJet.pt();
     // }
     Result.push_back(ResultStruct(CurrentJet));
+    
   }
   // By default, sort for original jet pt
   sort(Result.begin(), Result.end(), ResultStruct::origptgreater);

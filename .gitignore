@@ -30,6 +30,8 @@ bin/
 run12data*.package
 run12*.zip
 
+macros/ana/tasks.md
+
 # Prerequisites
 *.d
 
@@ -51,6 +53,8 @@ run12*.zip
 *.d
 *dict.cxx
 *dict.h
+*dictUmbrella.h
+*dictContent.h
 
 # Fortran module files
 *.mod
