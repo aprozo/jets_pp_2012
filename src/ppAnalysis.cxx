@@ -576,31 +576,7 @@ EVENTRESULT ppAnalysis::RunEvent() {
     if (pars.MaxJetNEF < 1.0 && jetptne / jetpttot > pars.MaxJetNEF)
       continue;
 
-    // vector<PseudoJet> constituents =
-    // sorted_by_pt(CurrentJet.constituents()); int nparticles =
-    // CurrentJet.constituents().size(); if (nparticles == 0)
-    //   continue;
-    // float pTlead = constituents[0].pt();
-    // double pT_lead0 = 0;
-    // double pT_lead3 = 0;
-    // double pT_lead5 = 0;
-    // double pT_lead7 = 0;
-    // if (pTlead > 0)
-    // {
-    //   pT_lead0 = CurrentJet.pt();
-    // }
-    // if (pTlead > 3)
-    // {
-    //   pT_lead3 = CurrentJet.pt();
-    // }
-    // if (pTlead > 5)
-    // {
-    //   pT_lead5 = CurrentJet.pt();
-    // }
-    // if (pTlead > 7)
-    // {
-    //   pT_lead7 = CurrentJet.pt();
-    // }
+   
     Result.push_back(ResultStruct(CurrentJet));
     
   }

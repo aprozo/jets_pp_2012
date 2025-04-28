@@ -94,17 +94,16 @@ int main(int argc, const char **argv) {
 
   TH1D *hEventsRun = new TH1D("hEventsRun", "Events per run", goodruns.size(),
                               0, goodruns.size());
-                    
-  TH1D *hVertexZ = new TH1D("hVertexZ", "hVertexZ; vz, cm",1000,-100, 100);
 
+  TH1D *hVertexZ = new TH1D("hVertexZ", "hVertexZ; vz, cm", 1000, -100, 100);
 
   // set names of bins to run numbers
   for (unsigned int i = 0; i < goodruns.size(); ++i) {
     hEventsRun->GetXaxis()->SetBinLabel(i + 1, Form("%d", goodruns[i]));
   }
 
-  TH1D * hEventsRunBeforeVertex=(  TH1D * ) hEventsRun->Clone("hEventsRunBeforeVertex");
-
+  TH1D *hEventsRunBeforeVertex =
+      (TH1D *)hEventsRun->Clone("hEventsRunBeforeVertex");
 
   // Save results
   // ------------
@@ -147,6 +146,9 @@ int main(int argc, const char **argv) {
   double pt[1000];
   ResultTree->Branch("pt", pt, "pt[njets]/D");
 
+  double ptLead[1000];
+  ResultTree->Branch("ptLead", ptLead, "ptLead[njets]/D");
+
   int n_constituents[1000];
   ResultTree->Branch("n_constituents", n_constituents,
                      "n_constituents[njets]/I");
@@ -166,7 +168,7 @@ int main(int argc, const char **argv) {
 
       Jets.Clear();
       EVENTRESULT ret = ppana->RunEvent(); // event observables reset here
-     
+
       // Understand what happened in the event
       switch (ret) {
       case EVENTRESULT::PROBLEM:
@@ -208,17 +210,13 @@ int main(int argc, const char **argv) {
       }
       hEventCounter->Fill("AFTER_VERTEX", 1);
 
-
-      if (ret==EVENTRESULT::JETSFOUND){
+      if (ret == EVENTRESULT::JETSFOUND) {
         hEventCounter->Fill("JETSFOUND", 1);
-      }
-      else if (ret==EVENTRESULT::NOCONSTS){
+      } else if (ret == EVENTRESULT::NOCONSTS) {
         hEventCounter->Fill("NOCONSTS", 1);
-      }
-      else if (ret==EVENTRESULT::NOJETS){
+      } else if (ret == EVENTRESULT::NOJETS) {
         hEventCounter->Fill("NOJETS", 1);
-      }
-      else if (ret==EVENTRESULT::NOTACCEPTED){
+      } else if (ret == EVENTRESULT::NOTACCEPTED) {
         hEventCounter->Fill("NOTACCEPTED", 1);
       }
 
@@ -252,7 +250,11 @@ int main(int argc, const char **argv) {
         trigger_match_HT2[ijet] =
             gr.orig.user_info<JetAnalysisUserInfo>().IsMatchedHT();
 
+        vector<PseudoJet> constituents =
+            sorted_by_pt(gr.orig.constituents()); // sort by pt
+        pTlead[ijet] = constituents[0].pt();
         pt[ijet] = gr.orig.perp();
+        ptLead[ijet] = gr.orig.constituents().at(0).perp();
         n_constituents[ijet] = gr.orig.constituents().size();
         index[ijet] = ijet;
 
