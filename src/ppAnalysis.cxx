@@ -431,11 +431,10 @@ EVENTRESULT ppAnalysis::RunEvent() {
   for (int i = 0; i < pFullEvent->GetEntries(); ++i) {
     sv = (TStarJetVector *)pFullEvent->At(i);
 
-    // skip towers to get charged jets
-
-    if (sv->GetCharge() == 0 ) {
-      continue;
-    }
+    // // skip towers to get charged jets
+    // if (sv->GetCharge() == 0 ) {
+    //   continue;
+    // }
 
     // Ensure kinematic similarity
     if (sv->Pt() < pars.PtConsMin || sv->Pt() > pars.PtConsMax)
