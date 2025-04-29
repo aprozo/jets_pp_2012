@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 
 <job name="jets_&trigger;_" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false">
+        <!-- <shell>singularity exec -e -B /direct -B /star -B /afs -B /gpfs -B /sdcc/lustre02 /cvmfs/star.sdcc.bnl.gov/containers/rhic_sl7.sif</shell> -->
 
         <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/data/data_file_&trigger;.list" nFiles="all" />
 
