@@ -46,6 +46,7 @@ using namespace std;
 struct JetWithInfo {
   TStarJetVectorJet orig;
   double pt;
+  double ptLead;
   double eta;
   double phi;
   double y;
@@ -58,11 +59,11 @@ struct JetWithInfo {
   bool trigger_match_HT2;
   double vz;
 
-  JetWithInfo(TStarJetVectorJet _orig, double _pt, double _eta, double _phi,
+  JetWithInfo(TStarJetVectorJet _orig, double _pt,double _ptLead, double _eta, double _phi,
               double _y, double _neutral_fraction, bool _trigger_match_JP2,
               double n_constituents, int _event_id, double _weight,
               double _multiplicity, bool _trigger_match_HT2, double _vz)
-      : orig(_orig), pt(_pt), eta(_eta), phi(_phi), y(_y),
+      : orig(_orig), pt(_pt), ptLead(_ptLead), eta(_eta), phi(_phi), y(_y),
         neutral_fraction(_neutral_fraction), trigger_match_JP2(_trigger_match_JP2),
         n_constituents(n_constituents), event_id(_event_id), weight(_weight),
         multiplicity(_multiplicity), trigger_match_HT2(_trigger_match_HT2), vz(_vz) {};
@@ -83,6 +84,7 @@ struct InputTreeEntry {
   bool trigger_match_HT2[1000];
   double neutral_fraction[1000];
   bool trigger_match_JP2[1000];
+  double ptLead[1000];
   double pt[1000];
   int n_constituents[1000];
   int index[1000];
@@ -93,7 +95,7 @@ struct OutputTreeEntry {
   OutputTreeEntry(JetWithInfo jet)
       : vz(jet.vz), n_constituents(jet.n_constituents), weight(jet.weight),
         multiplicity(jet.multiplicity), trigger_match_HT2(jet.trigger_match_HT2),
-        pt(jet.pt), eta(jet.eta), phi(jet.phi),
+        pt(jet.pt),ptLead(jet.ptLead), eta(jet.eta), phi(jet.phi),
         neutral_fraction(jet.neutral_fraction),
         trigger_match_JP2(jet.trigger_match_JP2) {};
 
@@ -103,6 +105,7 @@ struct OutputTreeEntry {
   double multiplicity;
   bool trigger_match_HT2;
   double pt;
+  double ptLead;
   double eta;
   double phi;
   double neutral_fraction;
@@ -128,10 +131,10 @@ int MatchGeantToPythia(TString mcTreeName, TString OutFile = "test.root") {
   TString RecoFile = recoFolder + mcBaseName;
   TString McFile = mcFolder + mcBaseName;
 
-  // if (OutFile.Contains("test")) {
-  //   RecoFile="/gpfs01/star/pwg/prozorov/jets_pp_2012/tree_pt-hat2535_35_geant.root";
-  //   McFile="/gpfs01/star/pwg/prozorov/jets_pp_2012/tree_pt-hat2535_35_mc.root";   
-  // } 
+  if (OutFile.Contains("test")) {
+    RecoFile="/gpfs01/star/pwg/prozorov/jets_pp_2012/output/geant/tree_pt-hat2535_035.root";
+    McFile="/gpfs01/star/pwg/prozorov/jets_pp_2012/output/mc/tree_pt-hat2535_035.root";   
+  } 
 
 
 
@@ -156,6 +159,7 @@ int MatchGeantToPythia(TString mcTreeName, TString OutFile = "test.root") {
   McChain->SetBranchAddress("neutral_fraction", mc.neutral_fraction);
   McChain->SetBranchAddress("trigger_match_JP2", mc.trigger_match_JP2);
   McChain->SetBranchAddress("pt", mc.pt);
+  McChain->SetBranchAddress("ptLead", mc.ptLead);
   McChain->SetBranchAddress("n_constituents", mc.n_constituents);
 
   TFile *Recof = new TFile(RecoFile, "READ");
@@ -176,6 +180,7 @@ int MatchGeantToPythia(TString mcTreeName, TString OutFile = "test.root") {
   RecoChain->SetBranchAddress("neutral_fraction", reco.neutral_fraction);
   RecoChain->SetBranchAddress("trigger_match_JP2", reco.trigger_match_JP2);
   RecoChain->SetBranchAddress("pt", reco.pt);
+  RecoChain->SetBranchAddress("ptLead", reco.ptLead);
   RecoChain->SetBranchAddress("n_constituents", reco.n_constituents);
 
   //! Output and histograms
@@ -216,6 +221,7 @@ int MatchGeantToPythia(TString mcTreeName, TString OutFile = "test.root") {
   OutputTreeEntry mc_result;
   double deltaR = -9;
   MatchedTree->Branch("mc_pt", &mc_result.pt, "mc_pt/D");
+  MatchedTree->Branch("mc_ptLead", &mc_result.ptLead, "mc_ptLead/D");
   MatchedTree->Branch("mc_eta", &mc_result.eta, "mc_eta/D");
   MatchedTree->Branch("mc_phi", &mc_result.phi, "mc_phi/D");
   MatchedTree->Branch("mc_neutral_fraction", &mc_result.neutral_fraction,
@@ -233,6 +239,7 @@ int MatchGeantToPythia(TString mcTreeName, TString OutFile = "test.root") {
                       "mc_trigger_match_HT2/O");
 
   MatchedTree->Branch("reco_pt", &reco_result.pt, "reco_pt/D");
+  MatchedTree->Branch("reco_ptLead", &reco_result.ptLead, "reco_ptLead/D");
   MatchedTree->Branch("reco_eta", &reco_result.eta, "reco_eta/D");
   MatchedTree->Branch("reco_phi", &reco_result.phi, "reco_phi/D");
   MatchedTree->Branch("reco_neutral_fraction", &reco_result.neutral_fraction,
@@ -274,7 +281,8 @@ int MatchGeantToPythia(TString mcTreeName, TString OutFile = "test.root") {
       hPtMc->Fill(mc_jet->Pt());
 
       mcresult.push_back(
-          JetWithInfo(*mc_jet, mc_jet->Pt(), mc_jet->Eta(), mc_jet->Phi(),
+          JetWithInfo(*mc_jet, mc_jet->Pt(), mc.ptLead[j],
+                      mc_jet->Eta(), mc_jet->Phi(),
                       mc_jet->Rapidity(), mc.neutral_fraction[j],
                       mc.trigger_match_JP2[j], mc.n_constituents[j], mc.eventid,
                       mc.weight, mc.mult, mc.trigger_match_HT2[j], mc.vz));
@@ -295,7 +303,8 @@ int MatchGeantToPythia(TString mcTreeName, TString OutFile = "test.root") {
           continue;
         hPtReco->Fill(reco_jet->Pt());
         recoresult.push_back(JetWithInfo(
-            *reco_jet, reco_jet->Pt(), reco_jet->Eta(), reco_jet->Phi(),
+            *reco_jet, reco_jet->Pt(),  reco.ptLead[j],
+             reco_jet->Eta(), reco_jet->Phi(),
             reco_jet->Rapidity(), reco.neutral_fraction[j],
             reco.trigger_match_JP2[j], reco.n_constituents[j], reco.eventid,
             reco.weight, reco.mult, reco.trigger_match_HT2[j], reco.vz));
@@ -335,7 +344,7 @@ int MatchGeantToPythia(TString mcTreeName, TString OutFile = "test.root") {
         if (isMatched)
           mcit = mcresult.erase(mcit);
         else {
-          JetWithInfo miss(*dummyjet, -9, -9, -9, -9, -9, 0, -9, mc.eventid,
+          JetWithInfo miss(*dummyjet, -9, -9, -9, -9, -9, -9, 0, -9, mc.eventid,
                            mc.weight, mc.mult, 0, mc.vz);
           MatchedResult.push_back(MatchedJetWithInfo(*mcit, miss));
           // print info about missed jets
@@ -347,7 +356,7 @@ int MatchGeantToPythia(TString mcTreeName, TString OutFile = "test.root") {
     }
 
     for (auto left_reco_jet : recoresult) {
-      JetWithInfo fake(*dummyjet, -9, -9, -9, -9, -9, 0, -9, reco.eventid,
+      JetWithInfo fake(*dummyjet, -9, -9, -9, -9, -9, -9, 0, -9, reco.eventid,
                        reco.weight, reco.mult, -9, reco.vz);
       hFakeRate->Fill(left_reco_jet.pt);
       MatchedResult.push_back(MatchedJetWithInfo(fake, left_reco_jet));

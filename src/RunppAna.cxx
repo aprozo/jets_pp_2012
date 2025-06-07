@@ -252,9 +252,8 @@ int main(int argc, const char **argv) {
 
         vector<PseudoJet> constituents =
             sorted_by_pt(gr.orig.constituents()); // sort by pt
-        pTlead[ijet] = constituents[0].pt();
+        ptLead[ijet] = constituents[0].pt();
         pt[ijet] = gr.orig.perp();
-        ptLead[ijet] = gr.orig.constituents().at(0).perp();
         n_constituents[ijet] = gr.orig.constituents().size();
         index[ijet] = ijet;
 
