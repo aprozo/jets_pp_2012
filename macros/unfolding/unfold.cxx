@@ -20,11 +20,23 @@
 // const vector<double> pt_reco_bins =
 // {6.9,  8.2,  9.7,  11.5, 13.6, 16.1, 19.0,
 //                                      22.5, 26.6, 31.4, 37.2, 44.0, 52.0, 70.0};
+// #pt_reco_bins = (
+//        5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0, 13.0, 14.0,
+//        15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0,
+//        25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0, 34.0,
+//        35.0, 36.0, 37.0, 38.0, 39.0, 40.0, 42.0, 44.0, 46.0, 48.0,
+//        50.0, 52.0, 54.0, 56.0, 58.0, 60.0, 64.0, 70.0, 90.0
+//       )
+
+// # #pt_reco_bins =
+//   [6.9,  8.2,  9.7,  11.5,13.6, 16.1, 19.0, 22.5, 26.6,31.4, 37.2, 44.0, 52.0]
 
 const vector<double> pt_reco_bins = {
-    5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
-    17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0,
-    29.0, 30.0, 33.0, 36.0, 39.0, 44.0, 50.0, 58.0, 64.0, 74.0, 90.0};
+    5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0, 13.0, 14.0,
+    15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0,
+    25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0, 34.0,
+    35.0, 36.0, 37.0, 38.0, 39.0, 40.0, 42.0, 44.0, 46.0, 48.0,
+    50.0, 52.0, 54.0, 56.0, 58.0, 60.0, 64.0, 70.0, 90.0};
 
 const vector<double> pt_mc_bins = {5.0,  6.9,  8.2,  9.7,  11.5,
                                    13.6, 16.1, 19.0, 22.5, 26.6,
@@ -227,6 +239,7 @@ void unfold() {
   gStyle->SetPaintTextFormat(".2f");
   ///////////////////////////////////////////////////////////////////////////
   const float testFraction = 0.2;
+  
 
   TH1D *hMeasured;
   TH1D *hTruth;
@@ -237,6 +250,7 @@ void unfold() {
   // Create RooUnfoldResponse object
   RooUnfoldResponse *response;
 
+
   bool isTraining = gSystem->AccessPathName("response.root");
 
   TFile *responseFile;
@@ -245,12 +259,13 @@ void unfold() {
   if (isTraining) {
     responseFile = new TFile("response.root", "RECREATE");
     // response = new RooUnfoldResponse(nBinsMeasured, measured_pt_min,
-    // measured_pt_max, nBinsTruth, truth_pt_min, truth_pt_max); hResponseMatrix
-    // = new TH2D("hResponseMatrix", "Response Matrix; Measured; Truth",
-    // nBinsMeasured, measured_pt_min, measured_pt_max, nBinsTruth,
-    // truth_pt_min, truth_pt_max); hMeasured = new TH1D("Measured", ";p_{t},
-    // GeV/c;", nBinsMeasured, measured_pt_min, measured_pt_max); hTruth = new
-    // TH1D("Truth", ";p_{t}, GeV/c;", nBinsTruth, truth_pt_min, truth_pt_max);
+    // measured_pt_max, nBinsTruth, truth_pt_min, truth_pt_max);
+    // hResponseMatrix = new TH2D("hResponseMatrix", "Response Matrix;
+    // Measured; Truth", nBinsMeasured, measured_pt_min, measured_pt_max,
+    // nBinsTruth, truth_pt_min, truth_pt_max); hMeasured = new
+    // TH1D("Measured", ";p_{t}, GeV/c;", nBinsMeasured, measured_pt_min,
+    // measured_pt_max); hTruth = new TH1D("Truth", ";p_{t}, GeV/c;",
+    // nBinsTruth, truth_pt_min, truth_pt_max);
     hResponseMatrix =
         new TH2D("hResponseMatrix", "Response Matrix; Measured; Truth",
                  pt_reco_bins.size() - 1, pt_reco_bins.data(),
@@ -275,9 +290,9 @@ void unfold() {
     // response = new RooUnfoldResponse(nBinsMeasured, measured_pt_min,
     // measured_pt_max, nBinsTruth, truth_pt_min, truth_pt_max);
 
-    TFile *treeFile = new TFile(
-        "/home/prozorov/dev/star/jets_pp_2012/output/jets_embedding.root",
-        "READ");
+    TFile *treeFile = new TFile("/home/prozorov/dev/star/jets_pp_2012/"
+                                "output/jets_embedding.root",
+                                "READ");
     if (!treeFile || treeFile->IsZombie()) {
       cout << "Error: cannot open jets_embedding.root" << endl;
       return;
@@ -287,10 +302,17 @@ void unfold() {
     double pt_reco;
     double weight;
 
+    bool reco_trigger_match_HT2;
+    bool reco_trigger_match_JP2;
+
     TTree *matchedTree = (TTree *)treeFile->Get("MatchedTree");
     matchedTree->SetBranchAddress("mc_pt", &pt_mc);
     matchedTree->SetBranchAddress("reco_pt", &pt_reco);
     matchedTree->SetBranchAddress("mc_weight", &weight);
+    matchedTree->SetBranchAddress("reco_trigger_match_HT2",
+                                  &reco_trigger_match_HT2);
+    matchedTree->SetBranchAddress("reco_trigger_match_JP2",
+                                  &reco_trigger_match_JP2);
 
     Double_t nEntries = matchedTree->GetEntries();
     TRandom3 rand(0);
