@@ -14,26 +14,24 @@
 #     -B $PWD star_star.simg \
 #     bash ./container.sh output/test/pt-hat2535_35.root geant
 
-
 # singularity exec -e \
 #     -B $PWD star_star.simg \
 #     bash ./container.sh output/test/pt-hat2535_35.root geant
 
 # cp tree_pt-hat2535_35.root tree_pt-hat2535_35_geant.root
 
-
 #test embedding
 # singularity exec -e \
 #     -B $PWD star_star.simg \
 #     bash ./container.sh output/test/pt-hat2535_35.root geant
 
+singularity exec -e \
+    -B $PWD -B /gpfs01 star_star.simg \
+    bash ./container.sh /gpfs01/star/pwg/youqi/run12/embedding/P12id/picos/20235003/out/pt-hat34_047.root mc
+
 # singularity exec -e \
 #     -B $PWD star_star.simg \
-#     bash ./container.sh output/test/pt-hat2535_35.root mc
-
-singularity exec -e \
-    -B $PWD star_star.simg \
-    bash ./container_matching_mc_reco.sh tree_pt-hat2535_35.root matching_test_tree.root
+#     bash ./container_matching_mc_reco.sh tree_pt-hat2535_35.root matching_test_tree.root
 
 # test HT2 data
 # singularity exec -e \
@@ -54,5 +52,3 @@ singularity exec -e \
 # singularity exec -e \
 #     -B $PWD star_star.simg \
 #     bash ./container_matching_mc_reco.sh tree_pt-hat1115_066.root matching_test_tree.root
-
-

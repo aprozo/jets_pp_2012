@@ -285,7 +285,27 @@ bool ppAnalysis::InitChains() {
       TurnOffCuts(pReader);
     }
 
-    cout << "Don't forget to set tower cuts for pReader!!" << endl;
+    // initialize qa histograms
+    QA_pt_sDCAxy_pos =
+        new TH2D("QA_pt_sDCAxy_pos", "sDCAxy positive; sDCA, cm; pt, GeV/c; N",
+                 100, -4, 4, 100, 0, 100);
+    QA_pt_sDCAxy_neg =
+        new TH2D("QA_pt_sDCAxy_neg", "sDCAxy negative; sDCA, cm;  pt, GeV/c; N",
+                 100, -4, 4, 100, 0, 100);
+    QA_jetpt_TowerID = new TH2D("QA_jetpt_TowerID",
+                                "Jet pt vs Tower ID; Jet pt, GeV/c; Tower ID",
+                                50, 0, 50, 4800, 0, 4800);
+    QA_highjetpt_leadingtower_pt = new TH1D(
+        "QA_highjetpt_leadingtower_pt",
+        "Leading tower pt in high(>22) pt jets; Leading tower pt, GeV/c; N",
+        100, 0, 40);
+    QA_highjetpt_leadingtrack_pt = new TH1D(
+        "QA_highjetpt_leadingtrack_pt",
+        "Leading track pt in high(>22) pt jets; Leading track pt, GeV/c; N",
+        100, 0, 40);
+    QA_vx = new TH1D("QA_vx", "Primary vertex x; vx, cm; N", 300, -4, 4);
+    QA_vy = new TH1D("QA_vy", "Primary vertex y; vy, cm; N", 300, -4, 4);
+    QA_vz = new TH1D("QA_vz", "Primary vertex z; vz, cm; N", 300, -50, 50);
   }
 
   cout << "N = " << NEvents << endl;
@@ -406,6 +426,12 @@ EVENTRESULT ppAnalysis::RunEvent() {
     eventid = header->GetEventId();
     runid1 = header->GetRunId();
     vz = header->GetPrimaryVertexZ();
+    vy = header->GetPrimaryVertexY();
+    vx = header->GetPrimaryVertexX();
+
+    QA_vx->Fill(vx);
+    QA_vy->Fill(vy);
+    QA_vz->Fill(vz);
 
     // For GEANT: Need to devise a runid that's unique but also
     // reproducible to match Geant and GeantMc data.
@@ -426,15 +452,31 @@ EVENTRESULT ppAnalysis::RunEvent() {
     return EVENTRESULT::PROBLEM;
   }
 
+  TList *tracks = pReader->GetListOfSelectedTracks();
+  TList *towers = pReader->GetListOfSelectedTowers();
+  // print content of tracks and towers
+
   // Fill particle container
   // -----------------------
   for (int i = 0; i < pFullEvent->GetEntries(); ++i) {
     sv = (TStarJetVector *)pFullEvent->At(i);
+    int trackid = sv->GetTrackID();
 
-    // // skip towers to get charged jets
-    // if (sv->GetCharge() == 0 ) {
-    //   continue;
-    // }
+    if (trackid < 0) { // it means it is a track -  not tower
+      TStarJetPicoPrimaryTrack *track =
+          (TStarJetPicoPrimaryTrack *)tracks->At(i);
+      float sDCAxy = track->GetsDCAxy();
+      int charge = track->GetCharge();
+      float pt = track->GetPt();
+      if (charge == 1) {
+        QA_pt_sDCAxy_pos->Fill(sDCAxy, pt);
+      } else if (charge == -1) {
+        QA_pt_sDCAxy_neg->Fill(sDCAxy, pt);
+      }
+
+      if (fabs(sDCAxy) > pars.sDCAxyCut)
+        continue;
+    }
 
     // Ensure kinematic similarity
     if (sv->Pt() < pars.PtConsMin || sv->Pt() > pars.PtConsMax)
@@ -461,9 +503,6 @@ EVENTRESULT ppAnalysis::RunEvent() {
       else
         sv_mass = 0.0; //! towers get photon mass ~ 0
 
-  
-
-      
       double E = TMath::Sqrt(sv->P() * sv->P() + sv_mass * sv_mass);
 
       sv->SetPxPyPzE(sv->Px(), sv->Py(), sv->Pz(), E);
@@ -523,7 +562,7 @@ EVENTRESULT ppAnalysis::RunEvent() {
   }
 
   // check if the event has high weight or large |vz|
-  double pthat_mult=1.5; 
+  double pthat_mult = 2;
 
   if ((pars.InputName.Contains("hat23_") && JAResult[0].perp() > 3.0*pthat_mult) ||
       (pars.InputName.Contains("hat34_") && JAResult[0].perp() > 4.0*pthat_mult)||
@@ -547,8 +586,12 @@ EVENTRESULT ppAnalysis::RunEvent() {
 
   for (unsigned ijet = 0; ijet < JAResult.size(); ijet++) {
     PseudoJet &CurrentJet = JAResult[ijet];
+    vector<PseudoJet> charged_constituents =
+        sorted_by_pt(OnlyCharged(CurrentJet.constituents()));
+    vector<PseudoJet> neutral_constituents =
+        sorted_by_pt(OnlyNeutral(CurrentJet.constituents()));
+
     PseudoJet NeutralPart = join(OnlyNeutral(CurrentJet.constituents()));
-    PseudoJet ChargedPart = join(OnlyCharged(CurrentJet.constituents()));
 
     bool is_matched_jp = match_jp(CurrentJet, triggers, pars.R);
     bool is_matched_ht = match_ht(CurrentJet, triggers, pars.R);
@@ -575,7 +618,22 @@ EVENTRESULT ppAnalysis::RunEvent() {
     if (pars.MaxJetNEF < 1.0 && jetptne / jetpttot > pars.MaxJetNEF)
       continue;
 
-   
+    if (charged_constituents.size() == 0)
+      continue; // skip jets with no charged constituents
+
+    auto leadingTrack = charged_constituents.at(0);
+    if (jetpttot > 22.0)
+      QA_highjetpt_leadingtrack_pt->Fill(leadingTrack.perp());
+
+    if (neutral_constituents.size() > 0) {
+      auto leadingTower = neutral_constituents.at(0);
+      int towerId = leadingTower.user_info<JetAnalysisUserInfo>().GetNumber();
+      QA_jetpt_TowerID->Fill(leadingTower.perp(), towerId);
+      if (jetpttot > 22.0)
+        // Fill QA histograms only for high pt jets
+        QA_highjetpt_leadingtower_pt->Fill(leadingTower.perp());
+    }
+
     Result.push_back(ResultStruct(CurrentJet));
     
   }
@@ -704,30 +762,16 @@ void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader) {
 
 //----------------------------------------------------------------------
 double LookupRun12Xsec(TString filename) {
-  //   (pthatrange)  nevents  weighted-Xsection
-  //   2, 3,       2409849,           9.00176
-  //   3, 4,       3706843,           1.46259
-  //   4, 5,       3709985,          0.354407
-  //   5, 7,       3563592,          0.151627
-  //   7, 9,       3637343,         0.0249102
-  //   9,11,      17337984,        0.00584656
-  //  11,15,      17233020,         0.0023021
-  //  15,20,      16422119,       0.000342608
-  //  20,25,       3547865,       4.56842e-05
-  //  25,35,       2415179,       9.71569e-06
-  //  35,45,       2525739,       4.69593e-07
-  //  45,55,       1203188,       2.69062e-08
-  //  55,99,       1264931,       1.43197e-09
-
   const int NUMBEROFPT = 13;
-  // const char
-  // *PTBINS[NUMBEROFPT]={"2_3","3_4","4_5","5_7","7_9","9_11","11_15","15_20","20_25","25_35","35_-1"};
-  const static float XSEC[NUMBEROFPT] = {
-      9.0012,      1.46253,     0.354566,    0.151622,    0.0249062,
-      0.00584527,  0.00230158,  0.000342755, 4.57002e-05, 9.72535e-06,
-      4.69889e-07, 2.69202e-08, 1.43453e-09};
-  const static float NUMBEROFEVENT[NUMBEROFPT] = {
-      3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 3e6, 2e6, 2e6, 1e6, 1e6};
+  const static double XSEC[NUMBEROFPT] = {
+      9.00176,     1.46259,     0.354407,    0.151627,    0.0249102,
+      0.00584656,  0.0023021,   0.000342608, 4.56842e-05, 9.71569e-06,
+      4.69593e-07, 2.69062e-08, 1.43197e-09};
+
+  const static double NUMBEROFEVENT[NUMBEROFPT] = {
+      3614773,  3706843, 3709985, 3563592, 3637343, 17337984, 17233020,
+      16422119, 3547865, 2415179, 2525739, 1203188, 1264931};
+
   const static vector<string> vptbins = {
       "pt-hat23_",   "pt-hat34_",   "pt-hat45_",   "pt-hat57_",   "pt-hat79_",
       "pt-hat911_",  "pt-hat1115_", "pt-hat1520_", "pt-hat2025_", "pt-hat2535_",

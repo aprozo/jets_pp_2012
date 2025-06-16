@@ -1,3 +1,3 @@
 #!/bin/bash
 
-singularity run -B /gpfs01 -B /star star_star.simg
+singularity shell  -B /star/u/prozorov/ -B /gpfs01 star_star.simg

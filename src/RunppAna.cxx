@@ -95,8 +95,6 @@ int main(int argc, const char **argv) {
   TH1D *hEventsRun = new TH1D("hEventsRun", "Events per run", goodruns.size(),
                               0, goodruns.size());
 
-  TH1D *hVertexZ = new TH1D("hVertexZ", "hVertexZ; vz, cm", 1000, -100, 100);
-
   // set names of bins to run numbers
   for (unsigned int i = 0; i < goodruns.size(); ++i) {
     hEventsRun->GetXaxis()->SetBinLabel(i + 1, Form("%d", goodruns[i]));
@@ -136,6 +134,10 @@ int main(int argc, const char **argv) {
   double neutral_fraction[1000];
   ResultTree->Branch("neutral_fraction", neutral_fraction,
                      "neutral_fraction[njets]/D");
+  bool is_leading_charged[1000];
+  ResultTree->Branch("is_leading_charged", is_leading_charged,
+                     "is_leading_charged[njets]/O");
+
   bool trigger_match_JP2[1000];
   ResultTree->Branch("trigger_match_JP2", trigger_match_JP2,
                      "trigger_match_JP2[njets]/O");
@@ -199,11 +201,9 @@ int main(int argc, const char **argv) {
         break;
       }
       hEventCounter->Fill("ALL", 1);
-
-      vz = ppana->GetVz();
       runid1 = ppana->GetRunid1();
 
-      hVertexZ->Fill(vz);
+ 
       hEventsRunBeforeVertex->Fill(Form("%i", runid1), 1);
       if (fabs(vz) > 30) {
         continue;
@@ -273,6 +273,32 @@ int main(int argc, const char **argv) {
   // Save the output
 
   fout->Write();
+
+  if (ppana->QA_pt_sDCAxy_pos) {
+    ppana->QA_pt_sDCAxy_pos->Write();
+  }
+  if (ppana->QA_pt_sDCAxy_neg) {
+    ppana->QA_pt_sDCAxy_neg->Write();
+  }
+  if (ppana->QA_jetpt_TowerID) {
+    ppana->QA_jetpt_TowerID->Write();
+  }
+  if (ppana->QA_highjetpt_leadingtower_pt) {
+    ppana->QA_highjetpt_leadingtower_pt->Write();
+  }
+  if (ppana->QA_highjetpt_leadingtrack_pt) {
+    ppana->QA_highjetpt_leadingtrack_pt->Write();
+  }
+
+  if (ppana->QA_vx) {
+    ppana->QA_vx->Write();
+  }
+  if (ppana->QA_vy) {
+    ppana->QA_vy->Write();
+  }
+  if (ppana->QA_vz) {
+    ppana->QA_vz->Write();
+  }
 
   cout << "Done." << endl;
 

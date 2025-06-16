@@ -15,17 +15,10 @@ using fastjet::cambridge_algorithm;
 using fastjet::JetAlgorithm;
 using fastjet::kt_algorithm;
 
-enum INTYPE
-{
-  MCTREE,
-  INTREE,
-  INPICO,
-  MCPICO,
-  HERWIGTREE
-};
+enum INTYPE { MCTREE, INTREE, INPICO, MCPICO, HERWIGTREE };
 
 // Return values for the main routine
-enum class EVENTRESULT{
+enum class EVENTRESULT {
   PROBLEM,
   ENDOFINPUT,
   NOTACCEPTED,
@@ -34,11 +27,10 @@ enum class EVENTRESULT{
   JETSFOUND
 };
 
-class ppParameters
-{
+class ppParameters {
 
-public :
-  double R = 0.6;            ///< Resolution parameter ("radius").
+public:
+  double R = 0.6; ///< Resolution parameter ("radius").
 
   /// Jet algorithm for the original jets
   JetAlgorithm LargeJetAlgorithm = fastjet::antikt_algorithm;
@@ -53,36 +45,42 @@ public :
 
   /// Repetitions in the background. Anything other than 1 WILL NOT WORK because
   /// a) we're using explicit ghosts (though we don't have to)
-  /// b) more importantly, the background subtractor contains fastjet::SelectorNHardest(2)
+  /// b) more importantly, the background subtractor contains
+  /// fastjet::SelectorNHardest(2)
   ///    which doesn't work jet-by-jet and throws an error
   // int GhostRepeat = 1;
   // float GhostArea = 0.005;    ///< ghost area
 
   // const double PtJetMin = 20.0;    ///< Min jet pT
-  double PtJetMin = 5.0;      ///< Min jet pT
-  double PtJetMax = 1000.0;   ///< Max jet pT
+  double PtJetMin = 5.0;    ///< Min jet pT
+  double PtJetMax = 1000.0; ///< Max jet pT
   double MJetMin = 0.0;
-  //double LeadPtMin=5.0;                 ///< leading jet minimum p<SUB>T</SUB>
+  // double LeadPtMin=5.0;                 ///< leading jet minimum
+  // p<SUB>T</SUB>
 
-  double MaxJetNEF=0.95;       ///< Max neutral energy fraction
+  double MaxJetNEF = 0.9; ///< Max neutral energy fraction
 
   double EtaConsCut = 1.0; ///< Constituent |&eta;| acceptance || was 1.0
   double PtConsMin = 0.2;  ///< Constituent pT minimum || was 0.2
   double PtConsMax = 30;   ///< Constituent pT maximum || was 30
 
-  double RefMultCut = 0; ///< Reference multiplicity. Needs to be rethought to accomodate pp and AuAu
+  double RefMultCut = 0; ///< Reference multiplicity. Needs to be rethought to
+                         ///< accomodate pp and AuAu
 
   double VzCut = 99999; ///< Vertex z
-  // const double VzDiffCut=6;         ///< |Vz(TPC) - Vz(VPD)| <-- NOT WORKING in older data (no VPD)
+  // const double VzDiffCut=6;         ///< |Vz(TPC) - Vz(VPD)| <-- NOT WORKING
+  // in older data (no VPD)
   double VzDiffCut = 99999; ///< |Vz(TPC) - Vz(VPD)|
 
-  double DcaCut = 3.0;               ///< track dca || was 3.0
-  double NMinFit = 12;               ///< minimum number of fit points for tracks || was 15
-  double FitOverMaxPointsCut = 0.51; ///< NFit / NFitPossible || was 0.52
+  double DcaCut = 1.0;    ///< track dca || was 3.0
+  double sDCAxyCut = 1.0; ///< signed dca_xy
+  double NMinFit = 20;    ///< minimum number of fit points for tracks || was 15
+  double FitOverMaxPointsCut = 0.52; ///< NFit / NFitPossible || was 0.52
 
   double HadronicCorr = 0.9999; ///< Fraction of hadronic correction
 
-  double FakeEff = 1.0; ///< fake efficiency for systematics. 0.95 is a reasonable example.
+  double FakeEff =
+      1.0; ///< fake efficiency for systematics. 0.95 is a reasonable example.
 
   Int_t IntTowScale = 0;
   /// Tower GAIN: 4.8%
@@ -102,14 +100,17 @@ public :
   double MaxEventPtCut = 30; ///< max track pT cut for event
   double MaxEventEtCut = 30; ///< max tower ET cut for event
   double MinEventEtCut = 0;  ///< min event ET cut for event
-  double ManualHtCut = 0.0;  ///< necessary for some embedding picos. Should always equal MinEventEtCut
+  double ManualHtCut = 0.0;  ///< necessary for some embedding picos. Should
+                             ///< always equal MinEventEtCut
 
   // Geant files have messed up runid and event id.
-  // Switch for fixing. Should be turned on by default for Geant files, off otherwise.
+  // Switch for fixing. Should be turned on by default for Geant files, off
+  // otherwise.
   bool UseGeantNumbering = false;
 
   TString InputName = "test.root";
-  INTYPE intype = INPICO;        ///< Input type (can be a pico dst, a result tree, an MC tree)
+  INTYPE intype =
+      INPICO; ///< Input type (can be a pico dst, a result tree, an MC tree)
   TString ChainName = "JetTree"; ///< Name of the input chain
   TString TriggerName = "ppJP2";
   TString OutFileName = "test.root";

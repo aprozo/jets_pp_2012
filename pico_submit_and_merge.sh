@@ -1,14 +1,28 @@
 #!/bin/bash
 # Function to clean up files
 cleanup() {
+    echo "cleaning that directory"
     rm *session.xml
-    rm -r run12data*.package
-    rm run12*.zip
+    rm -r *.package/
+
+    rm *.zip
     rm schedTemplateExp.xml
-    rm -r sched*.package
-    rm sumbit/scheduler/csh/*
-    rm sumbit/scheduler/list/*
-    rm sumbit/scheduler/report/*
+    rm sched*.package
+    rm *.dataset
+
+    echo "additional out/ report/ csh/"
+    rm -rf submit/scheduler/csh/
+    rm -rf submit/scheduler/list/
+    rm -rf submit/scheduler/report/
+    rm -rf submit/scheduler/gen
+    rm -rf submit/log/
+
+    mkdir -p submit/scheduler/gen
+    mkdir -p submit/scheduler/csh
+    mkdir -p submit/scheduler/list
+    mkdir -p submit/scheduler/report
+    mkdir -p submit/log/
+
 }
 
 # Function to submit analysis jobs for each data type
@@ -47,11 +61,10 @@ rerun_trees() {
             echo "========================================"
 
             singularity exec -e -B /gpfs01 star_star.simg \
-                bash scripts/merge_trees.sh $data_type
+                hadd -f -k -j output/jets_${data_type}.root output/${data_type}/*.root
         fi
     done
 }
-
 
 matching_mc_geant() {
     echo ""
@@ -62,8 +75,10 @@ matching_mc_geant() {
     mkdir -p output/matching_mc_reco
     star-submit-beta submit/matching_mc_reco.xml
     ./scripts/condor_control.sh
-    setup 64b
-    hadd -f -k -j output/jets_embedding.root output/matching_mc_reco/*.root
+    echo "merging trees"
+
+    singularity exec -e -B /gpfs01 star_star.simg \
+        hadd -f -k -j output/jets_embedding.root output/matching_mc_reco/*.root
     echo ""
     echo "========================================"
     echo "=========matching is finished==========="
@@ -71,8 +86,13 @@ matching_mc_geant() {
 
 ####################################################################################################
 
-# data_types=(JP2 HT2 MB mc geant)
-# data_types=(mc geant)
+data_types=(JP2 HT2 MB mc geant)
+# data_types=(JP2 HT2 MB)
+# data_types=(mc geant MB JP2)
+
 cleanup
-# rerun_trees
-matching_mc_geant
+rerun_trees
+# if data_types contains mc or geant then run matching_mc_geant
+if [[ " ${data_types[@]} " =~ " mc " ]] || [[ " ${data_types[@]} " =~ " geant " ]]; then
+    matching_mc_geant
+fi
