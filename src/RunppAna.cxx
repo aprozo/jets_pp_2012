@@ -77,13 +77,12 @@ int main(int argc, const char **argv) {
   // --------------------
   TFile *fout = new TFile(pars.OutFileName, "RECREATE");
 
-  TH1D *hEventCounter = new TH1D("hEventCounter", "Event Counter", 6, 0, 6);
+  TH1D *hEventCounter = new TH1D("hEventCounter", "Event Counter", 5, 0, 5);
   hEventCounter->GetXaxis()->SetBinLabel(1, "ALL");
   hEventCounter->GetXaxis()->SetBinLabel(2, "AFTER_VERTEX");
   hEventCounter->GetXaxis()->SetBinLabel(3, "JETSFOUND");
   hEventCounter->GetXaxis()->SetBinLabel(4, "NOJETS");
   hEventCounter->GetXaxis()->SetBinLabel(5, "NOCONSTS");
-  hEventCounter->GetXaxis()->SetBinLabel(6, "NOTACCEPTED");
 
   TString csvfile = "lists/good_run_list.list";
   vector<int> goodruns;
@@ -94,14 +93,10 @@ int main(int argc, const char **argv) {
 
   TH1D *hEventsRun = new TH1D("hEventsRun", "Events per run", goodruns.size(),
                               0, goodruns.size());
-
   // set names of bins to run numbers
   for (unsigned int i = 0; i < goodruns.size(); ++i) {
     hEventsRun->GetXaxis()->SetBinLabel(i + 1, Form("%d", goodruns[i]));
   }
-
-  TH1D *hEventsRunBeforeVertex =
-      (TH1D *)hEventsRun->Clone("hEventsRunBeforeVertex");
 
   // Save results
   // ------------
@@ -120,8 +115,6 @@ int main(int argc, const char **argv) {
   ResultTree->Branch("refmult", &refmult, "refmult/D");
   int njets;
   ResultTree->Branch("njets", &njets, "njets/I");
-  double vz;
-  ResultTree->Branch("vz", &vz, "vz/D");
   int mult;
   ResultTree->Branch("mult", &mult, "mult/I");
   float event_sum_pt;
@@ -134,9 +127,6 @@ int main(int argc, const char **argv) {
   double neutral_fraction[1000];
   ResultTree->Branch("neutral_fraction", neutral_fraction,
                      "neutral_fraction[njets]/D");
-  bool is_leading_charged[1000];
-  ResultTree->Branch("is_leading_charged", is_leading_charged,
-                     "is_leading_charged[njets]/O");
 
   bool trigger_match_JP2[1000];
   ResultTree->Branch("trigger_match_JP2", trigger_match_JP2,
@@ -203,21 +193,14 @@ int main(int argc, const char **argv) {
       hEventCounter->Fill("ALL", 1);
       runid1 = ppana->GetRunid1();
 
- 
-      hEventsRunBeforeVertex->Fill(Form("%i", runid1), 1);
-      if (fabs(vz) > 30) {
-        continue;
-      }
-      hEventCounter->Fill("AFTER_VERTEX", 1);
-
-      if (ret == EVENTRESULT::JETSFOUND) {
+      if (ret == EVENTRESULT::NOTACCEPTED) {
+        hEventCounter->Fill("AFTER_VERTEX", 1);
+      } else if (ret == EVENTRESULT::JETSFOUND) {
         hEventCounter->Fill("JETSFOUND", 1);
       } else if (ret == EVENTRESULT::NOCONSTS) {
         hEventCounter->Fill("NOCONSTS", 1);
       } else if (ret == EVENTRESULT::NOJETS) {
         hEventCounter->Fill("NOJETS", 1);
-      } else if (ret == EVENTRESULT::NOTACCEPTED) {
-        hEventCounter->Fill("NOTACCEPTED", 1);
       }
 
       // Now we can pull out details and results
@@ -256,7 +239,6 @@ int main(int argc, const char **argv) {
         pt[ijet] = gr.orig.perp();
         n_constituents[ijet] = gr.orig.constituents().size();
         index[ijet] = ijet;
-
         ijet++;
       }
 
@@ -274,31 +256,9 @@ int main(int argc, const char **argv) {
 
   fout->Write();
 
-  if (ppana->QA_pt_sDCAxy_pos) {
-    ppana->QA_pt_sDCAxy_pos->Write();
-  }
-  if (ppana->QA_pt_sDCAxy_neg) {
-    ppana->QA_pt_sDCAxy_neg->Write();
-  }
-  if (ppana->QA_jetpt_TowerID) {
-    ppana->QA_jetpt_TowerID->Write();
-  }
-  if (ppana->QA_highjetpt_leadingtower_pt) {
-    ppana->QA_highjetpt_leadingtower_pt->Write();
-  }
-  if (ppana->QA_highjetpt_leadingtrack_pt) {
-    ppana->QA_highjetpt_leadingtrack_pt->Write();
-  }
-
-  if (ppana->QA_vx) {
-    ppana->QA_vx->Write();
-  }
-  if (ppana->QA_vy) {
-    ppana->QA_vy->Write();
-  }
-  if (ppana->QA_vz) {
-    ppana->QA_vz->Write();
-  }
+  ppana->GetHistogramManager().Write(fout, "QA_histograms");
+  ppana->GetHistogramManagerProblematic().Write(fout,
+                                                "QA_histograms_problematic");
 
   cout << "Done." << endl;
 

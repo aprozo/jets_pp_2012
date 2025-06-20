@@ -7,29 +7,34 @@ export JETREADER=/usr/local/jetreader_build
 export LD_LIBRARY_PATH=/usr/local/jetreader_build/lib:/lib/:/usr/local/eventStructuredAu:/usr/local/RooUnfold:/usr/local/fastjet/lib:/usr/local/root/lib::/.singularity.d/libs
 input_file=${1}
 output_file=$(basename $input_file)
-# # add type to output file name
-# output_file="${output_file%.*}_${2}.root"
+
 data_type=${2}
 
 rm bin/RunppAna
 make
 
 # Set default values for tree type, pico type, and trigger based on data type
-trigger="All"
 treeType="JetTree"
 picoType="pico"
 jet_min_pt=5
-
+trigger="All"
 # Determine trigger type and tree/pico settings based on data_type
+
 case "$data_type" in
 mc)
     treeType="JetTreeMc"
     picoType="mcpico"
+    jet_min_pt=4
     ;;
-geant)
-    jet_min_pt=5
+MB)
+    trigger="ppMB"
     ;;
-
+HT2)
+    trigger="ppHT"
+    ;;
+JP2)
+    trigger="ppJP2"
+    ;;
 esac
 
 # Display the input and output file information

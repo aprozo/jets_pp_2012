@@ -62,7 +62,6 @@ using namespace contrib;
 #include <random>
 
 double LookupRun12Xsec(TString filename);
-
 /*
    For sorting with a different key
 */
@@ -80,7 +79,6 @@ class ResultStruct {
 public:
   PseudoJet orig;
   ResultStruct(PseudoJet orig) : orig(orig){};
-
   static bool origptgreater(ResultStruct const &a, ResultStruct const &b) {
     return a.orig.pt() > b.orig.pt();
   };
@@ -110,6 +108,100 @@ static const Selector OnlyNeutral =
     NotGhost &&
     SelectorChargeRange(0, 0); ///< Helper useful outside the class as well
 
+// Histograms for  QA histograms
+
+struct HistogramManager {
+  void Init() {
+    vx = new TH1D("vx", "Primary vertex x; vx, cm; N", 300, -0.5, 0.5);
+    vy = new TH1D("vy", "Primary vertex y; vy, cm; N", 300, -0.5, 0.5);
+    vz = new TH1D("vz", "Primary vertex z; vz, cm; N", 280, -70, 70);
+    vz_vpd = new TH1D("vz_vpd", "Primary vertex z from VPD; vz, cm; N", 280,
+                      -70, 70);
+    vz_diff = new TH1D("vz_diff", "vertex z VPD-TPC; vz, cm; N", 500, -20, 20);
+    pt_sDCAxy_pos = new TH2D("pt_sDCAxy_pos",
+                             "sDCAxy positive tracks; sDCA, cm; pt, GeV/c; N",
+                             100, -4, 4, 100, 0, 30);
+    pt_sDCAxy_neg = new TH2D("pt_sDCAxy_neg",
+                             "sDCAxy negative tracks; sDCA, cm;  pt, GeV/c; N",
+                             100, -4, 4, 100, 0, 30);
+    jetpt_TowerID =
+        new TH2D("jetpt_TowerID", "Jet pt vs Tower ID; Jet pt, GeV/c; Tower ID",
+                 50, 0, 50, 4801, 0, 4801);
+    highjetpt_leadingtower_pt = new TH1D(
+        "highjetpt_leadingtower_pt",
+        "Leading tower pt in high(>22) pt jets; Leading tower pt, GeV/c; N",
+        100, 0, 40);
+    highjetpt_leadingtrack_pt = new TH1D(
+        "highjetpt_leadingtrack_pt",
+        "Leading track pt in high(>22) pt jets; Leading track pt, GeV/c; N",
+        100, 0, 40);
+    //  problematic jets qa histograms
+    sDCAxy = new TH1D("sDCAxy", "sDCAxy; sDCA, cm", 100, -1, 1);
+    DCA = new TH1D("DCA", "DCA; DCA, cm", 100, 0, 2);
+    Chi2 = new TH1D("Chi2", "Chi2; Chi2, a.u.", 200, 0, 10);
+    Chi2PV = new TH1D("Chi2PV", "Chi2PV; Chi2PV, a.u.", 200, 0, 100);
+    matched = new TH1D("matched", "Matching with TOF and BEMC", 3, 0, 3);
+    matched->GetXaxis()->SetBinLabel(1, "No match");
+    matched->GetXaxis()->SetBinLabel(2, "BEMC match");
+    matched->GetXaxis()->SetBinLabel(3, "TOF match");
+  }
+  void FillTrack(TStarJetPicoPrimaryTrack *track) {
+    sDCAxy->Fill(track->GetsDCAxy() * track->GetCharge());
+    DCA->Fill(track->GetDCA());
+    Chi2->Fill(track->GetChi2());
+    Chi2PV->Fill(track->GetChi2PV());
+    bool matchBEMC = track->GetBemcMatchFlag();
+    bool matchTOF = track->GetTofMatchFlag();
+    if (matchBEMC)
+      matched->Fill(1);
+    if (matchTOF)
+      matched->Fill(2);
+    if (!matchBEMC && !matchTOF)
+      matched->Fill(0);
+  }
+
+  void Write(TFile *f, TString name = "QA_histograms") {
+    f->cd();
+    f->mkdir(name);
+    f->cd(name);
+    vx->Write();
+    vy->Write();
+    vz->Write();
+    vz_vpd->Write();
+    vz_diff->Write();
+    pt_sDCAxy_pos->Write();
+    pt_sDCAxy_neg->Write();
+    jetpt_TowerID->Write();
+    highjetpt_leadingtower_pt->Write();
+    highjetpt_leadingtrack_pt->Write();
+    // problematic jets
+    sDCAxy->Write();
+    DCA->Write();
+    Chi2->Write();
+    Chi2PV->Write();
+    matched->Write();
+  }
+
+  TH2D *pt_sDCAxy_pos;             ///< QA for positive DCAxy
+  TH2D *pt_sDCAxy_neg;             ///< QA for negative DCAxy
+  TH2D *jetpt_TowerID;             ///< QA for jet pt vs Tower ID
+  TH1D *highjetpt_leadingtower_pt; ///< QA for leading tower pt in high
+                                   ///< pt jets
+  TH1D *highjetpt_leadingtrack_pt; ///< QA for leading track pt in high
+                                   ///< pt jets
+  TH1D *vx;                        ///< QA for primary vertex x
+  TH1D *vy;                        ///< QA for primary vertex y
+  TH1D *vz;                        ///< QA for primary vertex z
+  TH1D *vz_vpd;                    ///< QA for primary vertex z from VPD
+  TH1D *vz_diff;                   ///< QA for vertex z VPD-TPC
+  // QA for tracks
+  TH1D *sDCAxy;
+  TH1D *DCA;
+  TH1D *Chi2;
+  TH1D *Chi2PV;
+  TH1D *matched;
+};
+
 /*
    The main class
  */
@@ -119,6 +211,8 @@ private:
   // These need to be initialized
   // ----------------------------
   ppParameters pars; ///< container to have all analysis parameters in one place
+
+  HistogramManager QA_hist, QA_hist_problematic; ///< QA histograms
 
   // Internal
   // --------
@@ -154,7 +248,6 @@ private:
   int runid;
   int runid1;
   float event_sum_pt;
-  double vz;
   int mult;
   double refmult;
   double weight;
@@ -184,6 +277,11 @@ public:
   // Getters and Setters
   // -------------------
   inline ppParameters &GetPars() { return pars; };
+  // get HistogramManager
+  inline HistogramManager &GetHistogramManager() { return QA_hist; };
+  inline HistogramManager &GetHistogramManagerProblematic() {
+    return QA_hist_problematic;
+  };
 
   /// Get jet radius
   inline double GetR() { return pars.R; };
@@ -200,8 +298,8 @@ public:
   /// Get the refmult of the current event
   inline double GetRefmult() { return refmult; };
 
-  /// Get the runid of the current event (this id for geant events can match to
-  /// bad run ids)
+  /// Get the runid of the current event (this id for geant events can match
+  /// to bad run ids)
   inline double GetRunid1() { return runid1; };
 
   /// Get the runid of the current event
@@ -211,9 +309,6 @@ public:
   inline double GetEventid() { return eventid; };
 
   inline float GetEventSumPt() { return event_sum_pt; };
-
-  /// Get the vz of the current event
-  inline double GetVz() { return vz; };
 
   inline int GetEventMult() { return mult; };
 

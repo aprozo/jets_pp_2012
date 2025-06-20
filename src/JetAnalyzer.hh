@@ -352,7 +352,7 @@ public:
 
   /// Multi-purpose description
   std::string GetTag() const { return tag; };
-  // void SetTag( const std::string newtag ) { tag=newtag; };
+  void SetTag( const std::string newtag ) { tag=newtag; };
 
   /// Multi-purpose description
   float GetNumber() const { return number; };
@@ -364,12 +364,15 @@ public:
   bool IsMatchedHT() const { return match_ht; };
   void SetMatchHT(const bool b) { match_ht = b; };
 
+  int GetTrackId() const { return trackid; };
+  void SetTrackId(const int id) { trackid = id; };
 
 private:
   const int quarkcharge; ///< Charge in units of e/3
   const int pid;
-  std::string tag;    ///< Multi-purpose
-  float number;       ///< Multi-purpose
+  std::string tag; ///< Multi-purpose
+  float number;    ///< Multi-purpose
+  int trackid;
   bool match_jp;
   bool match_ht;
 };

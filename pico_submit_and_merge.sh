@@ -77,7 +77,7 @@ matching_mc_geant() {
     ./scripts/condor_control.sh
     echo "merging trees"
 
-    singularity exec -e -B /gpfs01 star_star.simg \
+    singularity exec -B /gpfs01 star_star.simg \
         hadd -f -k -j output/jets_embedding.root output/matching_mc_reco/*.root
     echo ""
     echo "========================================"

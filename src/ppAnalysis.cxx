@@ -229,6 +229,10 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv) {
   // -----------------------
   select_jet_eta = SelectorAbsEtaMax(EtaJetCut);
   select_jet_pt = SelectorPtRange(pars.PtJetMin, pars.PtJetMax);
+
+  // if (pars.intype == MCPICO)
+  //   select_jet = SelectorPtRange(2, pars.PtJetMax);
+  // else
   select_jet = select_jet_eta * select_jet_pt;
 
   // Repeat on subjets?
@@ -286,26 +290,8 @@ bool ppAnalysis::InitChains() {
     }
 
     // initialize qa histograms
-    QA_pt_sDCAxy_pos =
-        new TH2D("QA_pt_sDCAxy_pos", "sDCAxy positive; sDCA, cm; pt, GeV/c; N",
-                 100, -4, 4, 100, 0, 100);
-    QA_pt_sDCAxy_neg =
-        new TH2D("QA_pt_sDCAxy_neg", "sDCAxy negative; sDCA, cm;  pt, GeV/c; N",
-                 100, -4, 4, 100, 0, 100);
-    QA_jetpt_TowerID = new TH2D("QA_jetpt_TowerID",
-                                "Jet pt vs Tower ID; Jet pt, GeV/c; Tower ID",
-                                50, 0, 50, 4800, 0, 4800);
-    QA_highjetpt_leadingtower_pt = new TH1D(
-        "QA_highjetpt_leadingtower_pt",
-        "Leading tower pt in high(>22) pt jets; Leading tower pt, GeV/c; N",
-        100, 0, 40);
-    QA_highjetpt_leadingtrack_pt = new TH1D(
-        "QA_highjetpt_leadingtrack_pt",
-        "Leading track pt in high(>22) pt jets; Leading track pt, GeV/c; N",
-        100, 0, 40);
-    QA_vx = new TH1D("QA_vx", "Primary vertex x; vx, cm; N", 300, -4, 4);
-    QA_vy = new TH1D("QA_vy", "Primary vertex y; vy, cm; N", 300, -4, 4);
-    QA_vz = new TH1D("QA_vz", "Primary vertex z; vz, cm; N", 300, -50, 50);
+    QA_hist.Init();
+    QA_hist_problematic.Init();
   }
 
   cout << "N = " << NEvents << endl;
@@ -335,15 +321,16 @@ EVENTRESULT ppAnalysis::RunEvent() {
   eventid = -(INT_MAX - 1);
   event_sum_pt = 0.;
   njets = 0;
-  vz = 999;
+
   particles.clear();
 
   // cout <<"============================================" << endl;
   // cout <<"===================New event================" << endl;
   // cout <<"============================================" << endl;
 
-
   TString trigger_array = "";
+
+  double vz, vy, vx, vz_vpd;
   switch (pars.intype) {
     // =====================================================
   case INPICO:
@@ -428,10 +415,18 @@ EVENTRESULT ppAnalysis::RunEvent() {
     vz = header->GetPrimaryVertexZ();
     vy = header->GetPrimaryVertexY();
     vx = header->GetPrimaryVertexX();
+    vz_vpd = header->GetVpdVz();
 
-    QA_vx->Fill(vx);
-    QA_vy->Fill(vy);
-    QA_vz->Fill(vz);
+    QA_hist.vx->Fill(vx);
+    QA_hist.vy->Fill(vy);
+    QA_hist.vz->Fill(vz);
+    QA_hist.vz_vpd->Fill(vz_vpd);
+    QA_hist.vz_diff->Fill(vz_vpd - vz);
+
+    // if vpd is available, use it to discard events in MB trigger only
+    if (pars.TriggerName.Contains("MB") && abs(vz_vpd - vz) > 6) {
+      return EVENTRESULT::NOTACCEPTED;
+    }
 
     // For GEANT: Need to devise a runid that's unique but also
     // reproducible to match Geant and GeantMc data.
@@ -452,8 +447,8 @@ EVENTRESULT ppAnalysis::RunEvent() {
     return EVENTRESULT::PROBLEM;
   }
 
-  TList *tracks = pReader->GetListOfSelectedTracks();
-  TList *towers = pReader->GetListOfSelectedTowers();
+  TList *tracksList = pReader->GetListOfSelectedTracks();
+  TList *towersList = pReader->GetListOfSelectedTowers();
   // print content of tracks and towers
 
   // Fill particle container
@@ -461,19 +456,20 @@ EVENTRESULT ppAnalysis::RunEvent() {
   for (int i = 0; i < pFullEvent->GetEntries(); ++i) {
     sv = (TStarJetVector *)pFullEvent->At(i);
     int trackid = sv->GetTrackID();
+    int container_id = sv->GetTowerID();
 
     if (trackid < 0) { // it means it is a track -  not tower
       TStarJetPicoPrimaryTrack *track =
-          (TStarJetPicoPrimaryTrack *)tracks->At(i);
+          (TStarJetPicoPrimaryTrack *)tracksList->At(i);
+      container_id = i;
       float sDCAxy = track->GetsDCAxy();
       int charge = track->GetCharge();
       float pt = track->GetPt();
       if (charge == 1) {
-        QA_pt_sDCAxy_pos->Fill(sDCAxy, pt);
+        QA_hist.pt_sDCAxy_pos->Fill(sDCAxy, pt);
       } else if (charge == -1) {
-        QA_pt_sDCAxy_neg->Fill(sDCAxy, pt);
+        QA_hist.pt_sDCAxy_neg->Fill(sDCAxy, pt);
       }
-
       if (fabs(sDCAxy) > pars.sDCAxyCut)
         continue;
     }
@@ -529,7 +525,7 @@ EVENTRESULT ppAnalysis::RunEvent() {
 
     particles.push_back(PseudoJet(*sv));
     particles.back().set_user_info(new JetAnalysisUserInfo(
-        3 * sv->GetCharge(), sv->mc_pdg_pid(), "", sv->GetTowerID()));
+        3 * sv->GetCharge(), sv->mc_pdg_pid(), "", container_id));
   }
 
   mult = particles.size();
@@ -596,15 +592,11 @@ EVENTRESULT ppAnalysis::RunEvent() {
     bool is_matched_jp = match_jp(CurrentJet, triggers, pars.R);
     bool is_matched_ht = match_ht(CurrentJet, triggers, pars.R);
 
-    double jetptne = 0.0;
-    double jetpttot = 0.0;
+    double jetpttot = CurrentJet.perp();
 
+    double jetptne = 0.0;
     for (PseudoJet &n : NeutralPart.constituents()) {
       jetptne += n.perp();
-    }
-
-    for (PseudoJet &part : CurrentJet.constituents()) {
-      jetpttot += part.perp();
     }
 
     JetAnalysisUserInfo *userinfo = new JetAnalysisUserInfo();
@@ -613,29 +605,38 @@ EVENTRESULT ppAnalysis::RunEvent() {
     userinfo->SetMatchJP(is_matched_jp);
     userinfo->SetMatchHT(is_matched_ht);
 
-    CurrentJet.set_user_info(userinfo);
-
-    if (pars.MaxJetNEF < 1.0 && jetptne / jetpttot > pars.MaxJetNEF)
+    if (pars.MaxJetNEF < 1.0 && (jetptne / jetpttot) > pars.MaxJetNEF)
       continue;
 
     if (charged_constituents.size() == 0)
       continue; // skip jets with no charged constituents
-
     auto leadingTrack = charged_constituents.at(0);
-    if (jetpttot > 22.0)
-      QA_highjetpt_leadingtrack_pt->Fill(leadingTrack.perp());
+    if (jetpttot > 22)
+      QA_hist.highjetpt_leadingtrack_pt->Fill(leadingTrack.perp());
+
+    if (charged_constituents.size() == 1) {
+      int container_id =
+          leadingTrack.user_info<JetAnalysisUserInfo>().GetNumber();
+      TStarJetPicoPrimaryTrack *track =
+          (TStarJetPicoPrimaryTrack *)tracksList->At(container_id);
+      if (jetpttot < 22.0)
+        QA_hist.FillTrack(track);
+      else
+        QA_hist_problematic.FillTrack(track);
+    }
 
     if (neutral_constituents.size() > 0) {
       auto leadingTower = neutral_constituents.at(0);
       int towerId = leadingTower.user_info<JetAnalysisUserInfo>().GetNumber();
-      QA_jetpt_TowerID->Fill(leadingTower.perp(), towerId);
+      QA_hist.jetpt_TowerID->Fill(leadingTower.perp(), towerId);
       if (jetpttot > 22.0)
         // Fill QA histograms only for high pt jets
-        QA_highjetpt_leadingtower_pt->Fill(leadingTower.perp());
+        QA_hist.highjetpt_leadingtower_pt->Fill(leadingTower.perp());
     }
 
+    CurrentJet.set_user_info(userinfo);
+
     Result.push_back(ResultStruct(CurrentJet));
-    
   }
   // By default, sort for original jet pt
   sort(Result.begin(), Result.end(), ResultStruct::origptgreater);

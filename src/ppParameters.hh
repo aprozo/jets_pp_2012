@@ -58,7 +58,7 @@ public:
   // double LeadPtMin=5.0;                 ///< leading jet minimum
   // p<SUB>T</SUB>
 
-  double MaxJetNEF = 0.9; ///< Max neutral energy fraction
+  double MaxJetNEF = 0.95; ///< Max neutral energy fraction
 
   double EtaConsCut = 1.0; ///< Constituent |&eta;| acceptance || was 1.0
   double PtConsMin = 0.2;  ///< Constituent pT minimum || was 0.2
@@ -67,13 +67,13 @@ public:
   double RefMultCut = 0; ///< Reference multiplicity. Needs to be rethought to
                          ///< accomodate pp and AuAu
 
-  double VzCut = 99999; ///< Vertex z
+  double VzCut = 50; ///< Vertex z
   // const double VzDiffCut=6;         ///< |Vz(TPC) - Vz(VPD)| <-- NOT WORKING
   // in older data (no VPD)
   double VzDiffCut = 99999; ///< |Vz(TPC) - Vz(VPD)|
 
   double DcaCut = 1.0;    ///< track dca || was 3.0
-  double sDCAxyCut = 1.0; ///< signed dca_xy
+  double sDCAxyCut = 0.5; ///< signed dca_xy
   double NMinFit = 20;    ///< minimum number of fit points for tracks || was 15
   double FitOverMaxPointsCut = 0.52; ///< NFit / NFitPossible || was 0.52
 
