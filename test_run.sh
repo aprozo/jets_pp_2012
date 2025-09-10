@@ -27,7 +27,7 @@
 
 singularity exec -e \
     -B $PWD -B /gpfs01 star_star.simg \
-    bash ./container.sh /gpfs01/star/pwg/youqi/run12/embedding/P12id/picos/20235003/out/pt-hat34_047.root mc
+    bash ./container.sh /gpfs01/star/pwg/youqi/run12/embedding/P12id/picos/20235003/out/pt-hat34_047.root geant
 
 # singularity exec -e \
 #     -B $PWD star_star.simg \

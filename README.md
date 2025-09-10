@@ -1,33 +1,95 @@
 
-anytime i type something in “$ “ it means that you type whatever is after the $ in your terminal. 
+# Jets in pp 2012 200 GeV
 
-1. login to RCF 
-2. get a working node - "rterm -i”
-3. convert your shell to bash - “bash”
-4. remove any older copies of my working directory /gpfs01/star/pwg/elayavalli/ppRun12_analysis_code 
-5. Copy the directory into your working directory 
-6. run the singularity container “$ source runimage.sh”
-7. if this worked, you should see your name become Singularity> at the very start of the terminal  
-8. setup the appropriate libraries and paths inside the container  “$ source setup.sh"
-9. the main analysis codes are available inside the ‘src’ directory - i created a new analysis called pptest which you can see the corresponding 
-10. first cleanup the existing binaries by running “$ make clean” from your ppRun12_analysis_code directory 
-11. Then compile the executable - “$ make”
-12. you should see that you have one executable inside ’bin/‘ now 
-13. there are three .txt files which include the necessary commands you need to run the analysis and the corresponding switches on pythia, geant, data. this is, in my view, truly the advantage of such a code in that your analysis method is 100% common and everything is controlled by the switches 
-14. read the code and understand what calls what, how can you add new observables into the ResultStructure etc… add your own observables and you can save it to a tree or save it directly to histograms. You can also see how you can get the charged particles within the jet inside the analysis class’s method that runs every event. 
-15. Have fun!  :) and as always, feel free to ask me any questions. 
+This is an analysis for work in special container which analyzes `TStarJetPicoDsts` https://github.com/wsu-yale-rhig/TStarJetPicoMaker.
+
+The companion external repository with how to read it
+https://github.com/kkauder/eventStructuredAu 
 
 
+The image container is `star_star.simg`.
+- You need to install either [Docker engine](https://docs.docker.com/get-started/get-docker/) or [Apptainer (singularity)](https://apptainer.org/docs/admin/main/installation.html).
+For simplier Apptainer (singularity) installation:
+```bash
+sudo apt update
+sudo apt install -y software-properties-common
+sudo add-apt-repository -y ppa:apptainer/ppa
+sudo apt update
+sudo apt install -y apptainer
+```
 
 
 
-The directory I use is /gpfs01/star/pwg/youqi/run12/ppRun12_analysis_code/submit. Inside the directory there is submit.py and submit.xml
 
-submit.py - We have a for loop that loops over all the files in the file list (/gpfs01/star/pwg/youqi/run12/ppRun12_analysis_code/data_file.list). One job will be submitted for each iteration of the loop. In each loop, we defined a string "submit_args" which contains arguments out, log, data_file and they will be passed to submit.xml
+## Instruction on how to produce TStarJetPicoDsts from minimcs and MuDsts:
 
-submit.xml - Line 35 allows us to enter the container. This is the equivalent of "source runimage.sh" when we run the code interactively. The options -B are directories that we want to be visible inside the container. It calls container.sh with singularity and reads the arguments out, log, data_file. data_file will then be passed to container.sh. Line 36 moves the output files of the jobs from a temporary location to the out directory you specified in the python script. Starting from line 48 is sandbox. I included all the files needed to run the jobs here, even the 65 GB of data (copied from Raghav's directory to mine), which is not the best way of doing it but makes my life easier.
+* 1. Make a List of minimcs and MuDsts
+**Command for making the full list:**
+    ```bash
+    find "$PWD" -type f | sort >> ~/TStarJetPicoMaker/<name_of_list>.list
+    ```
+**Note:** The `| sort` flag is necessary even if your inputs seem ordered by eye, because `find` will traverse the directory tree in the order items are stored within the directory entries. This will (mostly) be consistent from run to run on the same machine and will essentially be "file/directory creation order" if there have been no deletes.  
+However, some file systems will re-order directory entries as part of compaction operations or when the size of the entry needs to be expanded, so there's always a small chance the "raw" order will change over time. If you want a consistent order, feed the output through an extra sorting stage.
+    
+**Command for separating MuDsts and minimcs:**
+    ```bash
+    sed '/minimc/!d' <name_of_list>.list >> <minimc_list_name>.list
+    ```
+    And similar for MuDsts.
 
-container.sh (/gpfs01/star/pwg/youqi/run12/ppRun12_analysis_code/container.sh) - this contains the command lines to run the code and takes in arguments from submit.xml. $1 corresponds to the data_file variable in submit.xml
+* 2. Split Each List into Equal Files/Lines
+Use the `split` command. Example:
+```bash
+    split --suffix-length=2 --numeric-suffixes --lines=100 --additional-suffix=.list --verbose <input_filename> <output_prefix>_
+```
+This splits into files with 100 lines each.  
+Or, replace `--lines=100` with, e.g., `-n l/5` to split evenly into 5 files.
+    
 
-To run the code, create a /submit directory in your work directory, copy submit.py and submit.xml files from my directory, edit the code in those files (so that they read the file list you have, save output to your directory, etc). Create directories /scheduler/report, /scheduler/csh and /scheduler/list under /submit (see lines 70-72 of the xml file). Copy over and modify container.sh (for me this file was put outside the submit directory). Finally, do "python submit/submit.py" to submit the jobs.
+* 3. Change Filename Base in `macros/MakeTStarJetPico_example.cxx`
 
+(Around line 100 currently.)  
+    If your lists have a different structure than e.g. `MuDsts1115_00` (where `1115` is the pT-hat range and `00` is the first list of 100 MuDsts), you may need to rewrite this block.
+
+Test in an interpreter (e.g., a ROOT environment) until you get a sensible value for `std::string unique_name`.
+
+* 4. Change the Call in `submit/jetPicoProduction_example.xml`
+
+Match that number of lines. (Nominally, I have 100 files per job, so there will probably be a `100` as the penultimate argument to be changed to suit your job size.)
+    
+
+* 5. Adjust `find_mu`, `find_mc` and `slice_name` in `submit/submit.py`
+
+Adjust to match the lists of files you're inputting, and update `slice_name` so the XML script knows the name of the files it's copying from `$SCRATCH` to local.
+    
+The way `slice_name` is coded, be careful if you have lists like `minimcs1115.list` before splitting into 100 lines each. The Python looks for `minimcs`, so name these instead `minimc1115.list` to avoid double-counting.
+
+
+* 6. Adjust Default Arguments in `submit/submit.py`
+
+Update to suit your case so the defaults will work and you won’t have to input them each time.
+    
+
+* 7. Submit Jobs
+
+Once the above is adjusted, simply run:
+    
+```bash
+    python submit/submit.py
+```
+    
+This will use the XML script `n` times, where `n` is the number of input minimc or MuDsts lists.
+    
+
+
+* 8. If You Adjust Anything in `StRoot/TStarJetPicoMaker/`
+
+Remember to run:
+```bash
+./macros/compile.csh
+```
+
+
+* 9. Ensure `log/tmplogs` Directory Exists
+
+Make sure the directory exists where the submit script expects it, or it will try to submit jobs until the very end, then fail.

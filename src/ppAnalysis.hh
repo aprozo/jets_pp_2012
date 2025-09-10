@@ -138,26 +138,10 @@ struct HistogramManager {
     //  problematic jets qa histograms
     sDCAxy = new TH1D("sDCAxy", "sDCAxy; sDCA, cm", 100, -1, 1);
     DCA = new TH1D("DCA", "DCA; DCA, cm", 100, 0, 2);
-    Chi2 = new TH1D("Chi2", "Chi2; Chi2, a.u.", 200, 0, 10);
-    Chi2PV = new TH1D("Chi2PV", "Chi2PV; Chi2PV, a.u.", 200, 0, 100);
-    matched = new TH1D("matched", "Matching with TOF and BEMC", 3, 0, 3);
-    matched->GetXaxis()->SetBinLabel(1, "No match");
-    matched->GetXaxis()->SetBinLabel(2, "BEMC match");
-    matched->GetXaxis()->SetBinLabel(3, "TOF match");
   }
   void FillTrack(TStarJetPicoPrimaryTrack *track) {
     sDCAxy->Fill(track->GetsDCAxy() * track->GetCharge());
     DCA->Fill(track->GetDCA());
-    Chi2->Fill(track->GetChi2());
-    Chi2PV->Fill(track->GetChi2PV());
-    bool matchBEMC = track->GetBemcMatchFlag();
-    bool matchTOF = track->GetTofMatchFlag();
-    if (matchBEMC)
-      matched->Fill(1);
-    if (matchTOF)
-      matched->Fill(2);
-    if (!matchBEMC && !matchTOF)
-      matched->Fill(0);
   }
 
   void Write(TFile *f, TString name = "QA_histograms") {
@@ -174,12 +158,8 @@ struct HistogramManager {
     jetpt_TowerID->Write();
     highjetpt_leadingtower_pt->Write();
     highjetpt_leadingtrack_pt->Write();
-    // problematic jets
     sDCAxy->Write();
     DCA->Write();
-    Chi2->Write();
-    Chi2PV->Write();
-    matched->Write();
   }
 
   TH2D *pt_sDCAxy_pos;             ///< QA for positive DCAxy
@@ -197,9 +177,6 @@ struct HistogramManager {
   // QA for tracks
   TH1D *sDCAxy;
   TH1D *DCA;
-  TH1D *Chi2;
-  TH1D *Chi2PV;
-  TH1D *matched;
 };
 
 /*
@@ -212,7 +189,7 @@ private:
   // ----------------------------
   ppParameters pars; ///< container to have all analysis parameters in one place
 
-  HistogramManager QA_hist, QA_hist_problematic; ///< QA histograms
+  HistogramManager QA_hist; ///< QA histograms
 
   // Internal
   // --------
@@ -251,7 +228,6 @@ private:
   int mult;
   double refmult;
   double weight;
-  bool is_rejected;
   int njets;
 
   JetAnalyzer *pJA = 0;
@@ -279,9 +255,6 @@ public:
   inline ppParameters &GetPars() { return pars; };
   // get HistogramManager
   inline HistogramManager &GetHistogramManager() { return QA_hist; };
-  inline HistogramManager &GetHistogramManagerProblematic() {
-    return QA_hist_problematic;
-  };
 
   /// Get jet radius
   inline double GetR() { return pars.R; };
@@ -311,8 +284,6 @@ public:
   inline float GetEventSumPt() { return event_sum_pt; };
 
   inline int GetEventMult() { return mult; };
-
-  inline int GetRejectCode() { return is_rejected; };
 
   /// Get the Trigger (HT) object if it exists, for matching
   inline TStarJetVector *GetTrigger() const { return pHT; };

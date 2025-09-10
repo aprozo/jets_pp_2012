@@ -79,7 +79,7 @@ int main(int argc, const char **argv) {
 
   TH1D *hEventCounter = new TH1D("hEventCounter", "Event Counter", 5, 0, 5);
   hEventCounter->GetXaxis()->SetBinLabel(1, "ALL");
-  hEventCounter->GetXaxis()->SetBinLabel(2, "AFTER_VERTEX");
+  hEventCounter->GetXaxis()->SetBinLabel(2, "NOTACCEPTED");
   hEventCounter->GetXaxis()->SetBinLabel(3, "JETSFOUND");
   hEventCounter->GetXaxis()->SetBinLabel(4, "NOJETS");
   hEventCounter->GetXaxis()->SetBinLabel(5, "NOCONSTS");
@@ -119,8 +119,6 @@ int main(int argc, const char **argv) {
   ResultTree->Branch("mult", &mult, "mult/I");
   float event_sum_pt;
   ResultTree->Branch("event_sum_pt", &event_sum_pt, "event_sum_pt/F");
-  bool is_rejected;
-  ResultTree->Branch("is_rejected", &is_rejected, "is_rejected/O");
 
   TClonesArray Jets("TStarJetVectorJet");
   ResultTree->Branch("Jets", &Jets);
@@ -134,7 +132,6 @@ int main(int argc, const char **argv) {
   bool trigger_match_HT2[1000];
   ResultTree->Branch("trigger_match_HT2", trigger_match_HT2,
                      "trigger_match_HT2[njets]/O");
-
   double pt[1000];
   ResultTree->Branch("pt", pt, "pt[njets]/D");
 
@@ -194,7 +191,7 @@ int main(int argc, const char **argv) {
       runid1 = ppana->GetRunid1();
 
       if (ret == EVENTRESULT::NOTACCEPTED) {
-        hEventCounter->Fill("AFTER_VERTEX", 1);
+        hEventCounter->Fill("NOTACCEPTED", 1);
       } else if (ret == EVENTRESULT::JETSFOUND) {
         hEventCounter->Fill("JETSFOUND", 1);
       } else if (ret == EVENTRESULT::NOCONSTS) {
@@ -212,7 +209,6 @@ int main(int argc, const char **argv) {
       eventid = ppana->GetEventid();
       mult = ppana->GetEventMult();
       event_sum_pt = ppana->GetEventSumPt();
-      is_rejected = ppana->GetRejectCode();
 
       vector<ResultStruct> Result = ppana->GetResult();
       njets = Result.size();
@@ -257,8 +253,6 @@ int main(int argc, const char **argv) {
   fout->Write();
 
   ppana->GetHistogramManager().Write(fout, "QA_histograms");
-  ppana->GetHistogramManagerProblematic().Write(fout,
-                                                "QA_histograms_problematic");
 
   cout << "Done." << endl;
 

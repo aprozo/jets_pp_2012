@@ -14,7 +14,8 @@ bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi);
 
 bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers,
               float R);
-bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R);
+bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers,
+              float R);
 
 void setTriggerBitMap(TStarJetPicoTriggerInfo *trig,
                       TStarJetPicoEventHeader *header);
@@ -291,7 +292,6 @@ bool ppAnalysis::InitChains() {
 
     // initialize qa histograms
     QA_hist.Init();
-    QA_hist_problematic.Init();
   }
 
   cout << "N = " << NEvents << endl;
@@ -313,7 +313,6 @@ EVENTRESULT ppAnalysis::RunEvent() {
   // -------------------------------
   Result.clear();
   weight = 1.;
-  is_rejected = false;
   mult = 0;
   refmult = 0;
   runid = -(INT_MAX - 1);
@@ -573,7 +572,6 @@ EVENTRESULT ppAnalysis::RunEvent() {
       (pars.InputName.Contains("hat3545_") && JAResult[0].perp() > 45.0*pthat_mult)||
       (pars.InputName.Contains("hat4555_") && JAResult[0].perp() > 55.0*pthat_mult)||
       (pars.InputName.Contains("hat55999_") && JAResult[0].perp() > 1000.0)) {
-    is_rejected = true;
     return EVENTRESULT::NOTACCEPTED;
   }
 
@@ -610,6 +608,8 @@ EVENTRESULT ppAnalysis::RunEvent() {
 
     if (charged_constituents.size() == 0)
       continue; // skip jets with no charged constituents
+
+
     auto leadingTrack = charged_constituents.at(0);
     if (jetpttot > 22)
       QA_hist.highjetpt_leadingtrack_pt->Fill(leadingTrack.perp());
@@ -619,10 +619,7 @@ EVENTRESULT ppAnalysis::RunEvent() {
           leadingTrack.user_info<JetAnalysisUserInfo>().GetNumber();
       TStarJetPicoPrimaryTrack *track =
           (TStarJetPicoPrimaryTrack *)tracksList->At(container_id);
-      if (jetpttot < 22.0)
         QA_hist.FillTrack(track);
-      else
-        QA_hist_problematic.FillTrack(track);
     }
 
     if (neutral_constituents.size() > 0) {
@@ -635,7 +632,6 @@ EVENTRESULT ppAnalysis::RunEvent() {
     }
 
     CurrentJet.set_user_info(userinfo);
-
     Result.push_back(ResultStruct(CurrentJet));
   }
   // By default, sort for original jet pt

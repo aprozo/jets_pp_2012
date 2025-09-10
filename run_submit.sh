@@ -35,8 +35,8 @@ rerun_trees() {
 
     for data_type in ${data_types[@]}; do
         echo "Submitting jobs for data type: $data_type"
-        # Check if the list file exists before submitting
         mkdir -p output/$data_type
+
         # check if data_file_$data_type.list exists
         if [ ! -f lists/data/data_file_$data_type.list ]; then
             echo "data_file_$data_type.list does not exist"
@@ -59,9 +59,12 @@ rerun_trees() {
             echo "========================================"
             echo "Merging trees for data type: $data_type"
             echo "========================================"
-
-            singularity exec -e -B /gpfs01 star_star.simg \
-                hadd -f -k -j output/jets_${data_type}.root output/${data_type}/*.root
+            # add here loop merge by radius
+            for R in ${radii[@]}; do
+                echo "Merging for R=$R"
+                singularity exec -e -B /gpfs01 star_star.simg \
+                    hadd -f -k -j output/jets_${data_type}_R${R}.root output/${data_type}/*_R${R}.root
+            done
         fi
     done
 }
@@ -77,8 +80,11 @@ matching_mc_geant() {
     ./scripts/condor_control.sh
     echo "merging trees"
 
-    singularity exec -B /gpfs01 star_star.simg \
-        hadd -f -k -j output/jets_embedding.root output/matching_mc_reco/*.root
+    for R in ${radii[@]}; do
+        echo "Merging for R=$R"
+        singularity exec -B /gpfs01 star_star.simg \
+            hadd -f -k -j output/matching_mc_reco/jets_embedding_R${R}.root output/matching_mc_reco/*_R${R}.root
+    done
     echo ""
     echo "========================================"
     echo "=========matching is finished==========="
@@ -87,8 +93,7 @@ matching_mc_geant() {
 ####################################################################################################
 
 data_types=(JP2 HT2 MB mc geant)
-# data_types=(JP2 HT2 MB)
-# data_types=(mc geant MB JP2)
+radii=(0.2 0.3 0.4 0.5 0.6)
 
 cleanup
 rerun_trees

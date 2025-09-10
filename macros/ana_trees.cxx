@@ -49,7 +49,6 @@ struct InputTreeEntry {
   double vz;
   int mult;
   float event_sum_pt;
-  bool is_rejected;
   double neutral_fraction[1000];
   bool trigger_match[1000];
   double pt[1000];
@@ -86,7 +85,6 @@ int ana_trees(TString inputTreeName= "output/JP2/tree_sum0_part0.root", TString 
   MyChain->SetBranchAddress("vz", &data_jet.vz);
   MyChain->SetBranchAddress("mult", &data_jet.mult);
   MyChain->SetBranchAddress("event_sum_pt", &data_jet.event_sum_pt);
-  MyChain->SetBranchAddress("is_rejected", &data_jet.is_rejected);
   MyChain->SetBranchAddress("neutral_fraction", data_jet.neutral_fraction);
   MyChain->SetBranchAddress("trigger_match_jp", data_jet.trigger_match);
   MyChain->SetBranchAddress("pt", data_jet.pt);
@@ -108,7 +106,7 @@ int ana_trees(TString inputTreeName= "output/JP2/tree_sum0_part0.root", TString 
     if (!(iEvent % 50000))      cout << "Working on " << iEvent << " / " << N << endl;
     MyChain->GetEntry(iEvent);
 
-    if (data_jet.is_rejected || abs(data_jet.vz) > 30) // skip bad events with high weights
+    if (abs(data_jet.vz) > 30) // skip bad events with high weights
       continue;
 
     if (accepted_list.find(data_jet.event_sum_pt) != accepted_list.end())
