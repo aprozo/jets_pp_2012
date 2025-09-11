@@ -80,136 +80,133 @@
 class JetAnalyzer : public fastjet::ClusterSequenceArea {
 
 private:
-  /** Keep a copy of the original constituents.
-      In principle, they should be accessible via this->jets(),
-      but there is extra space allocated in that vector and I'd rather not muck
-     around with it.
+   /** Keep a copy of the original constituents.
+       In principle, they should be accessible via this->jets(),
+       but there is extra space allocated in that vector and I'd rather not muck
+      around with it.
+    */
+   std::vector<fastjet::PseudoJet> &OrigParticles;
+
+   /** Determined by whether we have an area definition */
+   bool CanDoBackground;
+
+   /**  For background subtraction.
+        Pointer for now, so that it can be 0 if unused.
+        Default specs and areas will be supplied.
    */
-  std::vector<fastjet::PseudoJet> &OrigParticles;
+   fastjet::JetMedianBackgroundEstimator *bkgd_estimator;
+   /** Subtractor */
+   fastjet::Subtractor *bkgd_subtractor;
 
-  /** Determined by whether we have an area definition */
-  bool CanDoBackground;
+   fastjet::BackgroundJetScalarPtDensity *scalarPtDensity;
 
-  /**  For background subtraction.
-       Pointer for now, so that it can be 0 if unused.
-       Default specs and areas will be supplied.
-  */
-  fastjet::JetMedianBackgroundEstimator *bkgd_estimator;
-  /** Subtractor */
-  fastjet::Subtractor *bkgd_subtractor;
-
-  fastjet::BackgroundJetScalarPtDensity *scalarPtDensity;
-
-  /** Background jet cut */
-  fastjet::Selector selector_bkgd;
-  /**  Background jet definiton */
-  fastjet::JetDefinition *jet_def_bkgd;
-  /**  Background area definiton */
-  fastjet::AreaDefinition *area_def_bkgd;
+   /** Background jet cut */
+   fastjet::Selector selector_bkgd;
+   /**  Background jet definiton */
+   fastjet::JetDefinition *jet_def_bkgd;
+   /**  Background area definiton */
+   fastjet::AreaDefinition *area_def_bkgd;
 
 public:
-  // ------------
-  // Constructors
-  // ------------
-  /** Standard constructor.
-      Pass through to Fastjet and set up internal background estimator with
-     default values. Note that initialization as ClusterSequenceArea( pHi,
-     jet_def, 0 ) works fine and skips the area computation. Instead, we provide
-     a second ctor and use this information to determine whether to provide
-     background capability.
-      \param InOrigParticles is the full set of constituent candidates. Passed
-     by reference!
-      \param JetDef is a fastjet::JetDefinition for the clustering. Passed by
-     reference!
-      \param AreaDef is a fastjet::AreaDefinition for the clustering
-      \param selector_bkgd is a fastjet::Selector for background subtraction
-   */
-  JetAnalyzer(
-      std::vector<fastjet::PseudoJet> &InOrigParticles,
-      fastjet::JetDefinition &JetDef, fastjet::AreaDefinition &AreaDef,
-      fastjet::Selector selector_bkgd = fastjet::SelectorAbsRapMax(0.6) *
-                                        (!fastjet::SelectorNHardest(2)));
+   // ------------
+   // Constructors
+   // ------------
+   /** Standard constructor.
+       Pass through to Fastjet and set up internal background estimator with
+      default values. Note that initialization as ClusterSequenceArea( pHi,
+      jet_def, 0 ) works fine and skips the area computation. Instead, we provide
+      a second ctor and use this information to determine whether to provide
+      background capability.
+       \param InOrigParticles is the full set of constituent candidates. Passed
+      by reference!
+       \param JetDef is a fastjet::JetDefinition for the clustering. Passed by
+      reference!
+       \param AreaDef is a fastjet::AreaDefinition for the clustering
+       \param selector_bkgd is a fastjet::Selector for background subtraction
+    */
+   JetAnalyzer(std::vector<fastjet::PseudoJet> &InOrigParticles, fastjet::JetDefinition &JetDef,
+               fastjet::AreaDefinition &AreaDef,
+               fastjet::Selector selector_bkgd = fastjet::SelectorAbsRapMax(0.6) * (!fastjet::SelectorNHardest(2)));
 
-  /** Use as ClusterSequence, without area computation and without BG options
-      \param InOrigParticles is the full set of constituent candidates. handed
-     by reference!
-      \param JetDef is a fastjet::JetDefinition for the clustering
-   */
-  JetAnalyzer(std::vector<fastjet::PseudoJet> &InOrigParticles,
-              fastjet::JetDefinition &JetDef);
+   /** Use as ClusterSequence, without area computation and without BG options
+       \param InOrigParticles is the full set of constituent candidates. handed
+      by reference!
+       \param JetDef is a fastjet::JetDefinition for the clustering
+    */
+   JetAnalyzer(std::vector<fastjet::PseudoJet> &InOrigParticles, fastjet::JetDefinition &JetDef);
 
-  /** Destructor. Take care of all the objects created with new.
-   */
-  ~JetAnalyzer() {
-    if (area_def_bkgd) {
-      delete area_def_bkgd;
-      area_def_bkgd = 0;
-    }
-    if (jet_def_bkgd) {
-      delete jet_def_bkgd;
-      jet_def_bkgd = 0;
-    }
-    if (bkgd_estimator) {
-      delete bkgd_estimator;
-      bkgd_estimator = 0;
-    }
-    if (bkgd_subtractor) {
-      delete bkgd_subtractor;
-      bkgd_subtractor = 0;
-    }
-    // NOT SURE WHY THIS BREAKS
-    // Seems like the ownership is transferred...
-    // if ( scalarPtDensity ) {
-    //   delete scalarPtDensity;
-    //   scalarPtDensity = 0 ;
-    // }
-  };
+   /** Destructor. Take care of all the objects created with new.
+    */
+   ~JetAnalyzer()
+   {
+      if (area_def_bkgd) {
+         delete area_def_bkgd;
+         area_def_bkgd = 0;
+      }
+      if (jet_def_bkgd) {
+         delete jet_def_bkgd;
+         jet_def_bkgd = 0;
+      }
+      if (bkgd_estimator) {
+         delete bkgd_estimator;
+         bkgd_estimator = 0;
+      }
+      if (bkgd_subtractor) {
+         delete bkgd_subtractor;
+         bkgd_subtractor = 0;
+      }
+      // NOT SURE WHY THIS BREAKS
+      // Seems like the ownership is transferred...
+      // if ( scalarPtDensity ) {
+      //   delete scalarPtDensity;
+      //   scalarPtDensity = 0 ;
+      // }
+   };
 
-  // ----------------
-  // Analysis methods
-  // ----------------
+   // ----------------
+   // Analysis methods
+   // ----------------
 
-  // -------------
-  // Other Methods
-  // -------------
-  /** Background functionality.
-      Currently, the jet definition is hard-coded to fastjet::kt_algorithm,
-     jet_def().R(), and the area definition is computed internally. Expand and
-     modify as needed.
-   */
-  fastjet::Subtractor *GetBackgroundSubtractor();
-  /**
-     Handle to BackgroundEstimator()
-   */
-  fastjet::JetMedianBackgroundEstimator *GetBackgroundEstimator() {
-    if (!bkgd_estimator)
-      throw(std::string("No estimator available"));
-    return bkgd_estimator;
-  };
+   // -------------
+   // Other Methods
+   // -------------
+   /** Background functionality.
+       Currently, the jet definition is hard-coded to fastjet::kt_algorithm,
+      jet_def().R(), and the area definition is computed internally. Expand and
+      modify as needed.
+    */
+   fastjet::Subtractor *GetBackgroundSubtractor();
+   /**
+      Handle to BackgroundEstimator()
+    */
+   fastjet::JetMedianBackgroundEstimator *GetBackgroundEstimator()
+   {
+      if (!bkgd_estimator)
+         throw(std::string("No estimator available"));
+      return bkgd_estimator;
+   };
 
-  /**
-     Set BackgroundEstimator by hand
-   */
-  void SetBackgroundEstimator(fastjet::JetMedianBackgroundEstimator *bge) {
-    bkgd_estimator = bge;
-  };
+   /**
+      Set BackgroundEstimator by hand
+    */
+   void SetBackgroundEstimator(fastjet::JetMedianBackgroundEstimator *bge) { bkgd_estimator = bge; };
 
-  // ---------
-  // Operators
-  // ---------
-  // May eventually be added.
-  // bool operator==(JetAnalyzer& rhs);
+   // ---------
+   // Operators
+   // ---------
+   // May eventually be added.
+   // bool operator==(JetAnalyzer& rhs);
 
-  // -------
-  // Helpers
-  // -------
-  /** The nth version of this important constant.
-   */
-  static const double pi;
+   // -------
+   // Helpers
+   // -------
+   /** The nth version of this important constant.
+    */
+   static const double pi;
 
-  /** Returns an angle between -pi and pi
-   */
-  static double phimod2pi(double phi);
+   /** Returns an angle between -pi and pi
+    */
+   static double phimod2pi(double phi);
 };
 
 // NOT part of the class!
@@ -228,47 +225,47 @@ public:
  */
 class SelectorDijetWorker : public fastjet::SelectorWorker {
 public:
-  /** Standard constructor
-      \param dPhi: Opening angle, searching for |&phi;1 - &phi;2 - &pi;| <
-     &Delta;&phi;
-  */
-  SelectorDijetWorker(double dPhi) : dPhi(dPhi) {};
+   /** Standard constructor
+       \param dPhi: Opening angle, searching for |&phi;1 - &phi;2 - &pi;| <
+      &Delta;&phi;
+   */
+   SelectorDijetWorker(double dPhi) : dPhi(dPhi) {};
 
-  /// the selector's description
-  std::string description() const {
-    std::ostringstream oss;
-    oss << "Searches for and returns dijet pairs within |phi1 - phi2 - pi| < "
-        << dPhi;
-    return oss.str();
-  };
+   /// the selector's description
+   std::string description() const
+   {
+      std::ostringstream oss;
+      oss << "Searches for and returns dijet pairs within |phi1 - phi2 - pi| < " << dPhi;
+      return oss.str();
+   };
 
-  /// Returns false, we need a jet ensemble.
-  bool applies_jet_by_jet() const { return false; };
+   /// Returns false, we need a jet ensemble.
+   bool applies_jet_by_jet() const { return false; };
 
-  /// Returns false, we need a jet ensemble.
-  bool pass(const fastjet::PseudoJet &pj) const {
-    if (!applies_jet_by_jet())
-      throw(std::string(
-          "Cannot apply this selector worker to an individual jet"));
-    return false;
-  };
+   /// Returns false, we need a jet ensemble.
+   bool pass(const fastjet::PseudoJet &pj) const
+   {
+      if (!applies_jet_by_jet())
+         throw(std::string("Cannot apply this selector worker to an individual jet"));
+      return false;
+   };
 
-  /// The relevant method
-  void terminator(std::vector<const fastjet::PseudoJet *> &jets) const;
+   /// The relevant method
+   void terminator(std::vector<const fastjet::PseudoJet *> &jets) const;
 
 private:
-  const double dPhi; ///< Opening angle, searching for |&phi;1 - &phi;2 - &pi;|
-                     ///< < &Delta;&phi;
+   const double dPhi; ///< Opening angle, searching for |&phi;1 - &phi;2 - &pi;|
+                      ///< < &Delta;&phi;
 };
 
 /** Helper for sorting pairs by second argument
  */
 struct sort_IntDoubleByDouble {
-  /// returns left.second < right.second
-  bool operator()(const std::pair<int, double> &left,
-                  const std::pair<int, double> &right) {
-    return left.second < right.second;
-  }
+   /// returns left.second < right.second
+   bool operator()(const std::pair<int, double> &left, const std::pair<int, double> &right)
+   {
+      return left.second < right.second;
+   }
 };
 /** Determines whether two vector sets are matched 1 to 1.
     Actual Dijet selector
@@ -284,21 +281,18 @@ fastjet::Selector SelectorDijets(const double dPhi = 0.4);
     For dijet A_J, the implementation is already overkill, but I want to
     lay the groundwork for more complex tasks
  */
-bool IsMatched(const std::vector<fastjet::PseudoJet> &jetset1,
-               const std::vector<fastjet::PseudoJet> &jetset2,
+bool IsMatched(const std::vector<fastjet::PseudoJet> &jetset1, const std::vector<fastjet::PseudoJet> &jetset2,
                const double Rmax);
 
 /** Check if one of the jets in jetset1 matches the reference.
     TODO: Could use this in the vector-vector version
  */
-bool IsMatched(const std::vector<fastjet::PseudoJet> &jetset1,
-               const fastjet::PseudoJet &reference, const double Rmax);
+bool IsMatched(const std::vector<fastjet::PseudoJet> &jetset1, const fastjet::PseudoJet &reference, const double Rmax);
 
 /** Check if jet and jet2 are matched
     TODO: Could use this in the vector versions
  */
-bool IsMatched(const fastjet::PseudoJet &jet1, const fastjet::PseudoJet &jet2,
-               const double Rmax);
+bool IsMatched(const fastjet::PseudoJet &jet1, const fastjet::PseudoJet &jet2, const double Rmax);
 
 // =============================================================================
 /** The best way to interface vector<PseudoJet> with ROOT seems to be via
@@ -340,41 +334,40 @@ fastjet::PseudoJet MakePseudoJet(const TLorentzVector *const lv);
  */
 class JetAnalysisUserInfo : public fastjet::PseudoJet::UserInfoBase {
 public:
-  /// Standard Constructor
-  JetAnalysisUserInfo(int quarkcharge = -999, int pid = -9999,
-                      std::string tag = "", float number = -1)
+   /// Standard Constructor
+   JetAnalysisUserInfo(int quarkcharge = -999, int pid = -9999, std::string tag = "", float number = -1)
       : quarkcharge(quarkcharge), pid(pid), tag(tag), number(number) {};
 
-  /// Charge in units of e/3
-  int GetQuarkCharge() const { return quarkcharge; };
+   /// Charge in units of e/3
+   int GetQuarkCharge() const { return quarkcharge; };
 
-  int GetPID() const { return pid; };
+   int GetPID() const { return pid; };
 
-  /// Multi-purpose description
-  std::string GetTag() const { return tag; };
-  void SetTag( const std::string newtag ) { tag=newtag; };
+   /// Multi-purpose description
+   std::string GetTag() const { return tag; };
+   void SetTag(const std::string newtag) { tag = newtag; };
 
-  /// Multi-purpose description
-  float GetNumber() const { return number; };
-  void SetNumber(const float f) { number = f; };
+   /// Multi-purpose description
+   float GetNumber() const { return number; };
+   void SetNumber(const float f) { number = f; };
 
-  bool IsMatchedJP() const { return match_jp; };
-  void SetMatchJP(const bool b) { match_jp = b; };
-  
-  bool IsMatchedHT() const { return match_ht; };
-  void SetMatchHT(const bool b) { match_ht = b; };
+   bool IsMatchedJP() const { return match_jp; };
+   void SetMatchJP(const bool b) { match_jp = b; };
 
-  int GetTrackId() const { return trackid; };
-  void SetTrackId(const int id) { trackid = id; };
+   bool IsMatchedHT() const { return match_ht; };
+   void SetMatchHT(const bool b) { match_ht = b; };
+
+   int GetTrackId() const { return trackid; };
+   void SetTrackId(const int id) { trackid = id; };
 
 private:
-  const int quarkcharge; ///< Charge in units of e/3
-  const int pid;
-  std::string tag; ///< Multi-purpose
-  float number;    ///< Multi-purpose
-  int trackid;
-  bool match_jp;
-  bool match_ht;
+   const int quarkcharge; ///< Charge in units of e/3
+   const int pid;
+   std::string tag; ///< Multi-purpose
+   float number;    ///< Multi-purpose
+   int trackid;
+   bool match_jp;
+   bool match_ht;
 };
 
 // =============================================================================
@@ -389,39 +382,38 @@ private:
 */
 class SelectorChargeWorker : public fastjet::SelectorWorker {
 public:
-  /** Standard constructor
-      \param cmin: inclusive lower bound
-      \param cmax: inclusive upper bound
-  */
-  SelectorChargeWorker(const int cmin, const int cmax)
-      : cmin(cmin), cmax(cmax) {};
+   /** Standard constructor
+       \param cmin: inclusive lower bound
+       \param cmax: inclusive upper bound
+   */
+   SelectorChargeWorker(const int cmin, const int cmax) : cmin(cmin), cmax(cmax) {};
 
-  /// the selector's description
-  std::string description() const {
-    std::ostringstream oss;
-    oss.str("");
-    oss << cmin << " <= quark charge <= " << cmax;
-    return oss.str();
-  };
+   /// the selector's description
+   std::string description() const
+   {
+      std::ostringstream oss;
+      oss.str("");
+      oss << cmin << " <= quark charge <= " << cmax;
+      return oss.str();
+   };
 
-  /// keeps the ones that have cmin <= quarkcharge <= cmax
-  bool pass(const fastjet::PseudoJet &p) const {
-    const int &quarkcharge =
-        p.user_info<JetAnalysisUserInfo>().GetQuarkCharge();
-    return (quarkcharge >= cmin) && (quarkcharge <= cmax);
-  };
+   /// keeps the ones that have cmin <= quarkcharge <= cmax
+   bool pass(const fastjet::PseudoJet &p) const
+   {
+      const int &quarkcharge = p.user_info<JetAnalysisUserInfo>().GetQuarkCharge();
+      return (quarkcharge >= cmin) && (quarkcharge <= cmax);
+   };
 
 private:
-  const int cmin; ///< inclusive lower bound
-  const int cmax; ///< inclusive upper bound
+   const int cmin; ///< inclusive lower bound
+   const int cmax; ///< inclusive upper bound
 };
 // =============================================================================
 /** the function that allows to write simply
 
     Selector sel = SelectorChargeRange( cmin, cmax );
 */
-fastjet::Selector SelectorChargeRange(const int cmin = -999,
-                                      const int cmax = 999);
+fastjet::Selector SelectorChargeRange(const int cmin = -999, const int cmax = 999);
 
 // =============================================================================
 // =============================================================================
