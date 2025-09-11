@@ -1,9 +1,13 @@
 *.root
-ppRun12Datapicos/ppMBRun12
-ppRun12Datapicos/ppHT2Run12
-ppRun12Datapicos/ppJP2Run12
-ppRun12Datapicos/submit/gen
-ppRun12Datapicos/submit/log
+data/picoDst/ppMBRun12
+data/picoDst/ppHT2Run12
+data/picoDst/ppJP2Run12
+data/picoDst/submit/gen
+data/picoDst/submit/log
+
+lists/trees/
+
+
 src/obj/*.o
 *.log
 *.pdf
@@ -66,13 +70,4 @@ macros/ana/tasks.md
 *.a
 *.lib
 
-# Executables
-*.exe
-*.out
-*.app
-
-andrew/
-youqi/
 allout.txt
-output_fulljets/fakesmisses.cpp
-output_fulljets/fakesmisses2.cpp
