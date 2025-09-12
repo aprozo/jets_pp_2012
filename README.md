@@ -18,6 +18,9 @@ sudo apt update
 sudo apt install -y apptainer
 ```
 
+### Notes
+File `/gpfs01/star/pwg/youqi/run12/embedding/P12id/picos/20235003/out/pt-hat1115_000.root` does not contain Mc entries
+
 
 
 
