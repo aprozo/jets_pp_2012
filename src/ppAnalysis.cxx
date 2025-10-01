@@ -12,6 +12,7 @@ using std::endl;
 
 bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R);
 bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R);
+void setTriggerBitMap(TStarJetPicoTriggerInfo *trig, TStarJetPicoEventHeader *header);
 
 double getPythiaWeight(TString filename);
 // Standard ctor
@@ -344,6 +345,8 @@ EVENTRESULT ppAnalysis::RunEvent()
       // check if triggerBitMap are not set to zero
       if (trig->GetTriggerFlag() == 5 && trig->GetADC() == 0)
          continue; // skip triggers with BBC decision
+
+      setTriggerBitMap(trig, header);
       triggers.push_back(trig);
    }
    // for (auto trig : triggers) {
@@ -754,4 +757,73 @@ bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float 
       }
    }
    return false;
+}
+
+void setTriggerBitMap(TStarJetPicoTriggerInfo *trig, TStarJetPicoEventHeader *header) // needed for real data
+{
+   // check if trigmap is not 0
+   std::bitset<32> original_bitmap = trig->GetBitMap();
+   Int_t trigMap = original_bitmap.to_ulong(); // get the original bitmap
+   if (trigMap != 0) {
+      return; // if the bitmap is already set, no need to set it again
+   }
+   // bitmap layout :
+   // bit 1: barrel high tower 1
+   // bit 2: barrel high tower 2
+   // bit 3: barrel high tower 3
+   // bit 4: jet patch 0
+   // bit 5: jet patch 1
+   // bit 6: jet patch 2
+   // bit 7-31: open
+   // valid only for pp12 data:
+   header->SetJetPatchThreshold(0, 20);  // jp0
+   header->SetJetPatchThreshold(1, 28);  // jp1
+   header->SetJetPatchThreshold(2, 36);  // jp2
+   header->SetHighTowerThreshold(0, 11); // bht0
+   header->SetHighTowerThreshold(1, 15); // bht1
+   header->SetHighTowerThreshold(2, 18); // bht2
+   header->SetHighTowerThreshold(3, 8);  // bht3
+   // //  ADC values:
+   // // fHighTowerThreshold[4] = 11 , 15 , 18 , 8  - bht0, bht1, bht2, bht3
+   // // fJetPatchThreshold[3]  = 20 , 28 , 36  -     jp0, jp1, jp2
+
+   Float_t eta = trig->GetEta();
+   // compare eta to -0.100000
+   bool jp_eta_flag = false;
+   if (eta > -0.10000001 && eta < -0.09999999999)
+      jp_eta_flag = true;
+   else if (eta == 0.5 || eta == -0.5)
+      jp_eta_flag = true;
+
+   if (trig->GetId() <= 17 && jp_eta_flag) {
+
+      Int_t jpAdc = trig->GetADC();
+      UInt_t jp0 = header->GetJetPatchThreshold(0);
+      UInt_t jp1 = header->GetJetPatchThreshold(1);
+      UInt_t jp2 = header->GetJetPatchThreshold(2);
+
+      if (jp0 > 0 && jpAdc > jp0)
+         trigMap |= 1 << 4;
+      if (jp1 > 0 && jpAdc > jp1)
+         trigMap |= 1 << 5;
+      if (jp2 > 0 && jpAdc > jp2)
+         trigMap |= 1 << 6;
+
+      trig->SetBitMap(trigMap);
+   } else // it means bht
+   {
+      Int_t bhtAdc = trig->GetADC();
+      UInt_t bht1 = header->GetHighTowerThreshold(1);
+      UInt_t bht2 = header->GetHighTowerThreshold(2);
+      UInt_t bht3 = header->GetHighTowerThreshold(3);
+
+      if (bht1 > 0 && bhtAdc > bht1)
+         trigMap |= 1 << 1;
+      if (bht2 > 0 && bhtAdc > bht2)
+         trigMap |= 1 << 2;
+      if (bht3 > 0 && bhtAdc > bht3)
+         trigMap |= 1 << 3;
+
+      trig->SetBitMap(trigMap);
+   }
 }
