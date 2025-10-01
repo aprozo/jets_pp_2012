@@ -7,12 +7,10 @@ set -uo pipefail
 
 # Select which triggers to process (HT2, JP2, MB)
 TRIGGERS=(JP2 HT2)
-# Enable/disable embedding
+# Select which types to process (data, embedding)
 TYPE=(data embedding)
 
-
 RADII=(0.2 0.3 0.4 0.5 0.6)
-
 
 cleanup() {
     echo "cleaning that directory"
@@ -120,6 +118,11 @@ main() {
         echo "Merging trees for trigger: $trigger and type: $type"
         merge_trees "$trigger" "matching" "merged_matching_$trigger"
     done
+
+    echo ""
+    echo "========================================"
+    echo "=========all jobs are finished=========="
+    echo "========================================"
 
 }
 
