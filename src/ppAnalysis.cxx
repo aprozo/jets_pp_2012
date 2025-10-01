@@ -478,7 +478,7 @@ EVENTRESULT ppAnalysis::RunEvent()
    // For pythia, use cross section as weight
    // ---------------------------------------
 
-   if (pars.InputName.Contains("pt-hat")) {
+   if (pars.InputName.Contains("pt_hat")) {
       TString currentfile = pReader->GetInputChain()->GetCurrentFile()->GetName();
       weight = getPythiaWeight(currentfile);
       if (fabs(weight - 1) < 1e-4) {
@@ -705,9 +705,9 @@ double getPythiaWeight(TString filename)
    const vector<double> n_events = {3614773,  3706843, 3709985, 3563592, 3637343, 17337984, 17233020,
                                     16422119, 3547865, 2415179, 2525739, 1203188, 1264931};
 
-   const static vector<string> pt_hat_bins = {"pt-hat23_",   "pt-hat34_",   "pt-hat45_",   "pt-hat57_",   "pt-hat79_",
-                                              "pt-hat911_",  "pt-hat1115_", "pt-hat1520_", "pt-hat2025_", "pt-hat2535_",
-                                              "pt-hat3545_", "pt-hat4555_", "pt-hat55999_"};
+   const static vector<string> pt_hat_bins = {"pt_hat23_",   "pt_hat34_",   "pt_hat45_",   "pt_hat57_",   "pt_hat79_",
+                                              "pt_hat911_",  "pt_hat1115_", "pt_hat1520_", "pt_hat2025_", "pt_hat2535_",
+                                              "pt_hat3545_", "pt_hat4555_", "pt_hat55999_"};
 
    for (int i = 0; i < pt_hat_bins.size(); ++i) {
       if (filename.Contains(pt_hat_bins.at(i).data())) {
