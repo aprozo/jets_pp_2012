@@ -36,7 +36,7 @@ enum class EVENTRESULT {
 class ppParameters {
 
 public:
-   double R = 0.6; ///< Resolution parameter ("radius").
+   double R = 0.4; ///< Resolution parameter ("radius").
 
    /// Jet algorithm for the original jets
    JetAlgorithm LargeJetAlgorithm = fastjet::antikt_algorithm;

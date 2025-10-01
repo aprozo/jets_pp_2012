@@ -3,7 +3,7 @@
 <job name="jets_&trigger;_" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false">
         <!-- <shell>singularity exec -e -B /direct -B /star -B /afs -B /gpfs -B /sdcc/lustre02 /cvmfs/star.sdcc.bnl.gov/containers/rhic_sl7.sif</shell> -->
 
-        <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/data/data_file_&trigger;.list" nFiles="all" />
+        <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/&filelist;" nFiles="all" />
 
         <command>
         @ nFile=0
@@ -12,13 +12,19 @@
         # put your script here, with filename as input file
         echo $filename
         echo "starting singularity"
-        singularity exec -e -B $SCRATCH -B /gpfs01 star_star.simg bash container.sh $filename &trigger;
+
+        if ("&type;" == "embedding") then
+                singularity exec -e -B $SCRATCH -B /gpfs01 star_star.simg bash container.sh $filename mc_&trigger;
+                singularity exec -e -B $SCRATCH -B /gpfs01 star_star.simg bash container.sh $filename geant_&trigger;
+        else
+                singularity exec -e -B $SCRATCH -B /gpfs01 star_star.simg bash container.sh $filename data_&trigger;
+        endif
         @ nFile++
         end
 
         </command>
-        <stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/&trigger;_$FILEBASENAME.out" />
-        <stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/&trigger;_$FILEBASENAME.err" />
+        <stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/&type;_&trigger;_$FILEBASENAME.out" />
+        <stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/&type;_&trigger;_$FILEBASENAME.err" />
 
         <ResourceUsage>
                 <Times>
@@ -32,7 +38,9 @@
         <Generator>
                 <Location>/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/scheduler/gen/</Location>
         </Generator>
-        <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/output/&trigger;/" />
+        <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/output/&trigger;/&type;/" />
+        <output fromScratch="*.log" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/" />
+       
 
         <SandBox installer="ZIP">
                 <Package name="run12data">

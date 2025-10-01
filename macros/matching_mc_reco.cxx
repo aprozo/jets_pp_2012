@@ -102,14 +102,29 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
                                           "tree_pt-hat3545_033_R0.5.root")
 {
 
-   TString mcBaseName = mcTreeName(mcTreeName.Last('/') + 1, mcTreeName.Length());
-   TString OutFile = "matched_" + mcBaseName;
+   TString baseName = mcTreeName(mcTreeName.Last('/') + 1, mcTreeName.Length());
+   // if it does not has .root extension, add it
+   if (!baseName.EndsWith(".root")) {
+      baseName += ".root";
+   }
+   // get Trigger from input filename if it contains JP2 or HT2
+   TString Trigger = "MB";
+   if (mcTreeName.Contains("JP2")) {
+      Trigger = "JP2";
+   } else if (mcTreeName.Contains("HT2")) {
+      Trigger = "HT2";
+   }
 
-   TString mcFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/mc/";
-   TString recoFolder = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/geant/";
+   TString dirName = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/" + Trigger + "/embedding/";
+   // remove prefix mc from base name and add geant
+   baseName.ReplaceAll("mc_", "");
+   TString geantBaseName = "geant_" + baseName;
+   TString mcBaseName = "mc_" + baseName;
 
-   TString RecoFile = recoFolder + mcBaseName;
-   TString McFile = mcFolder + mcBaseName;
+   TString OutFile = "matched_" + baseName;
+
+   TString RecoFile = dirName + geantBaseName;
+   TString McFile = dirName + mcBaseName;
 
    float RCut = 0;
    // get RCut from input filename if it contains *Rx.x.root
@@ -175,6 +190,7 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
 
    TFile *fout = new TFile(OutFile, "RECREATE");
    TH1D *hDeltaR = new TH1D("hDeltaR", "#Delta R all; #Delta R", 350, 0, 3.5);
+   TH1D *hDeltaRMatched = new TH1D("hDeltaRMatched", "#Delta R matched; #Delta R", 350, 0, 3.5);
    TH1D *hPtMc = new TH1D("hPtMc", "Mc p_{t}; p_{t}, GeV/c", 500, 0, 50);
    TH1D *hPtReco = new TH1D("hPtReco", "Reco p_{t}; p_{t}, GeV/c", 500, 0, 50);
    TH2D *hPtMcReco =
@@ -278,7 +294,7 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
          MatchedTree->Fill();
          // fill histograms and counters
          if (outMcJet.pt > 0 && outRecoJet.pt > 0) { // matched jets
-            hDeltaR->Fill(deltaR);
+            hDeltaRMatched->Fill(deltaR);
             hPtMcReco->Fill(outMcJet.pt, outRecoJet.pt);
             MatchNumber++;
          } else if (outMcJet.pt > 0 && outRecoJet.pt <= 0) { // missed jets
@@ -308,6 +324,7 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
    stats->Write();
    hEventsRun->Write();
    hDeltaR->Write();
+   hDeltaRMatched->Write();
    hPtMc->Write();
    hPtReco->Write();
    hPtMcReco->Write();
@@ -341,6 +358,11 @@ vector<MatchedJetPair> MatchJetsEtaPhi(const vector<MyJet> &McJets, const vector
       for (auto rcit = recoJetsCopy.begin(); rcit != recoJetsCopy.end(); ++rcit) {
          MyJet recoJet = *rcit;
          double deltaR = mcJet.deltaR(recoJet);
+         // find DeltaR histogram in system path and fill it
+         TH1D *hDeltaR = (TH1D *)gDirectory->Get("hDeltaR");
+         if (hDeltaR) {
+            hDeltaR->Fill(deltaR);
+         }
 
          if (deltaR < 0.6 * R && deltaR < minDeltaR) {
             minDeltaR = deltaR;

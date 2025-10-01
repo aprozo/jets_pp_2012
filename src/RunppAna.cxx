@@ -1,7 +1,3 @@
-/* @file RunppAna.cxx
-   @author Raghav Kunnawalkam Elayavalli,Youqi Song and Alexandr Prozorov
-*/
-
 #include "TStarJetVectorJet.h"
 #include "ppAnalysis.hh"
 #include "ppParameters.hh"
@@ -14,8 +10,6 @@
 #include <TFile.h>
 #include <TLorentzVector.h>
 #include <TMath.h>
-#include <TParameter.h>
-#include <TRandom.h>
 
 #include <algorithm>
 #include <set>

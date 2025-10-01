@@ -61,7 +61,6 @@ using namespace contrib;
 #include <algorithm>
 #include <random>
 
-double LookupRun12Xsec(TString filename);
 /*
    For sorting with a different key
 */
@@ -201,8 +200,6 @@ private:
    double rho = 0; ///< background density
 
    std::shared_ptr<TStarJetPicoReader> pReader = 0;
-
-   Long64_t evi = 0;
 
    int PicoDebugLevel = 0; /// Control DebugLevel in picoDSTs
    int eventid;

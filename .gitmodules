@@ -1,0 +1,3 @@
+[submodule "external/TStarJetPicoMaker"]
+	path = external/TStarJetPicoMaker
+	url = https://github.com/wsu-yale-rhig/TStarJetPicoMaker.git
