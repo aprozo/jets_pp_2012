@@ -10,31 +10,28 @@ export LD_LIBRARY_PATH=/usr/local/jetreader_build/lib:/lib/:/usr/local/eventStru
 
 # --- Input parameters ---
 input_file=${1}
-output_file=$(basename $input_file)
 data_type=${2}
 
-make clean
+output_file=${data_type}_$(basename $input_file)
+# make clean
 make
 
 # Set default values for tree type, pico type, and trigger based on data type
 treeType="JetTree"
 picoType="pico"
 jet_min_pt=5
-trigger="All"
+constituent_max_pt=30
+trigger=$data_type
 # Determine trigger type and tree/pico settings based on data_type
 
-case "$data_type" in
-    mc)
-        treeType="JetTreeMc"
-        picoType="mcpico"
-        jet_min_pt=4
-        ;;
-    geant) ;;
-    MB)  trigger="ppMB" ;;
-    HT2) trigger="ppHT" ;;
-    JP2) trigger="ppJP2" ;;
-    *)   echo "Unknown data_type: $data_type"; usage ;;
-esac
+# if data_type contains "mc" like mc_HT2 or mc_JP2 or mc_MB
+if [[ $data_type == mc_* ]]; then
+    treeType="JetTreeMc"
+    picoType="mcpico"
+    jet_min_pt=4
+    constituent_max_pt=35
+fi
+
 
 # Define arguments for the RunppAna command
 args=(
@@ -42,23 +39,23 @@ args=(
     -intype "$picoType"
     -c "$treeType"
     -trig "$trigger"
-    -o "tree_$output_file"
+    -o "$output_file"
     -N -1
     -pj $jet_min_pt 2000
-    -pc 0.2 30
+    -pc 0.2 $constituent_max_pt
     -lja "antikt"
     -ec 1
     -geantnum 1
 )
 
 # Append hadronic correction argument if running on Monte Carlo data
-if [[ $data_type == "geant" ]]; then
+if [[ $data_type == geant_* ]]; then
     args+=(-hadcorr 0.9999999)
     args+=(-towunc 0)
     args+=(-fakeeff 1)
 fi
 
-if [[ $data_type == "mc" ]]; then
+if [[ $data_type == mc_* ]]; then
     args+=(-jetnef 1)
 fi
 
@@ -75,9 +72,9 @@ for R in "${RADII[@]}"; do
     # add to ouput_file the radius info
     output_file_R=${output_file%.root}_R${R}.root
     args+=(-R "$R")
-    args+=(-o "tree_$output_file_R")
+    args+=(-o "$output_file_R")
     
-    echo "Writing to output:   tree_${output_file_R}"
+    echo "Writing to output:   ${output_file_R}"
     printf ' %q' "${args[@]}"; echo
     ./bin/RunppAna "${args[@]}"
     # Remove the last 4 elements (-R and its value) to reset for the next iteration

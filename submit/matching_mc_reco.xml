@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8" ?>
 
-<job name="matching_mc_reco_" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission ="false">
+<job name="matching_mc_reco_" maxFilesPerProcess="10" fileListSyntax="paths" simulateSubmission ="false">
 
-    <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/trees/trees_mc.list" nFiles="all" />
+    <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/trees/embedding_&trigger;.list" nFiles="all" />
 
     <command>
         @ nFile=0
@@ -16,8 +16,8 @@
         end
 
     </command>
-    <stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/matching_mc_reco_$FILEBASENAME.out" />
-    <stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/matching_mc_reco_$FILEBASENAME.err" />
+    <stdout URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/matching_mc_reco_&trigger;_$FILEBASENAME_$JOBID.out" />
+    <stderr URL="file:/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/log/matching_mc_reco_&trigger;_$FILEBASENAME_$JOBID.err" />
 
     <ResourceUsage>
         <Times>
@@ -31,15 +31,13 @@
     <Generator>
         <Location>/gpfs01/star/pwg/prozorov/jets_pp_2012/submit/scheduler/gen/</Location>
     </Generator>
-    <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/output/matching_mc_reco/" />
+    <output fromScratch="*.root" toURL="/gpfs01/star/pwg/prozorov/jets_pp_2012/output/&trigger;/matching/" />
 
     <SandBox installer="ZIP">
         <Package name="run12ana">
             <File>file:./star_star.simg</File>
             <File>file:./container_matching_mc_reco.sh</File>
-            <File>file:./macros/MatchGeantToPythia.cxx</File>
             <File>file:./macros/matching_mc_reco.cxx</File>
-
         </Package>
     </SandBox>
 

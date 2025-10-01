@@ -4,6 +4,7 @@ data/picoDst/ppHT2Run12
 data/picoDst/ppJP2Run12
 data/picoDst/submit/gen
 data/picoDst/submit/log
+data/*
 
 lists/trees/*
 

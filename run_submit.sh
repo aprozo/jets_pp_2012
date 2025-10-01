@@ -1,103 +1,127 @@
 #!/bin/bash
-# Function to clean up files
+set -uo pipefail
+
+################################################################################
+# CONFIGURATION
+################################################################################
+
+# Select which triggers to process (HT2, JP2, MB)
+TRIGGERS=(JP2 HT2)
+# Enable/disable embedding
+TYPE=(data embedding)
+
+
+RADII=(0.2 0.3 0.4 0.5 0.6)
+
+
 cleanup() {
     echo "cleaning that directory"
-    rm *session.xml
-    rm -r *.package/
-
-    rm *.zip
-    rm schedTemplateExp.xml
-    rm sched*.package
-    rm *.dataset
-
-    echo "additional out/ report/ csh/"
-    rm -rf submit/scheduler/csh/
-    rm -rf submit/scheduler/list/
-    rm -rf submit/scheduler/report/
-    rm -rf submit/scheduler/gen
-    rm -rf submit/log/
-
-    mkdir -p submit/scheduler/gen
-    mkdir -p submit/scheduler/csh
-    mkdir -p submit/scheduler/list
-    mkdir -p submit/scheduler/report
-    mkdir -p submit/log/
-
+    rm -f *session.xml schedTemplateExp.xml *.zip *.dataset
+    rm -rf *.package/ submit/scheduler/{csh,list,report,gen} submit/log/
+    mkdir -p submit/{scheduler/{gen,csh,list,report},log}
 }
 
-# Function to submit analysis jobs for each data type
-rerun_trees() {
-    echo ""
-    echo "========================================"
-    echo "=============sending jobs==============="
-    echo "========================================"
-    echo ""
+merge_trees() {
+    local trigger=$1
+    local type=$2
+    local out_prefix=$3
 
-    for data_type in ${data_types[@]}; do
-        echo "Submitting jobs for data type: $data_type"
-        mkdir -p output/$data_type
-
-        # check if data_file_$data_type.list exists
-        if [ ! -f lists/data/data_file_$data_type.list ]; then
-            echo "data_file_$data_type.list does not exist"
-            break
-        fi
-        star-submit-beta-template -template submit/mysubmit.xml -entities trigger=$data_type
+    echo "Merging trees for trigger: $trigger and type: $type"
+    for R in "${RADII[@]}"; do
+        echo "  Merging for R=$R"
+        singularity exec -e -B /gpfs01 star_star.simg \
+            hadd -f -k -j output/$trigger/${out_prefix}_R${R}.root \
+            output/$trigger/$type/*_R${R}.root
     done
+}
 
+
+submit_trees(){
+    for trigger in "${TRIGGERS[@]}"; do
+        for type in "${TYPE[@]}"; do
+
+            echo "Processing trigger: $trigger"
+            mkdir -p output/$trigger/$type/
+
+            if [ "$type" == "embedding" ]; then
+                filelist="lists/jet_pico_dst/embedding.list"
+            else
+                filelist="lists/jet_pico_dst/data_${trigger}.list"
+            fi
+
+            if [ ! -f "${filelist}" ]; then
+                echo "WARNING: ${filelist} does not exist, skipping..."
+                continue
+            fi
+        echo "Submitting jobs for trigger: $trigger and type: $type"
+        star-submit-beta-template \
+            -template submit/mysubmit.xml \
+            -entities trigger="$trigger",type="$type",filelist="$filelist"
+        done
+    done
+}
+
+submit_matching() {
+    mkdir -p lists/trees
+    for trigger in "${TRIGGERS[@]}"; do
+        type="embedding"
+        ls -d $PWD/output/$trigger/$type/mc*.root > lists/trees/$type"_"$trigger.list
+        mkdir -p output/$trigger/matching
+        star-submit-beta-template \
+            -template submit/matching_mc_reco.xml \
+            -entities trigger=$trigger
+    done
+}
+
+
+main() {
+    cleanup
+    echo "Triggers: ${TRIGGERS[*]} | Types: ${TYPE[*]}"
+    echo "========================================"
+    echo "=============sending data==============="
+    echo "========================================"
+    echo ""
+
+    # submit_trees
     ./scripts/condor_control.sh
     echo ""
     echo "========================================"
     echo "=========trees are finished============="
     echo "========================================"
     echo ""
+    # merge data trees
+    
 
-    for data_type in ${data_types[@]}; do
-        ls -d $PWD/output/$data_type/*.root >lists/trees/trees_$data_type.list
-        # if JP2 or MB or HT2, merge trees
-        if [ $data_type == "JP2" ] || [ $data_type == "MB" ] || [ $data_type == "HT2" ]; then
-            echo "========================================"
-            echo "Merging trees for data type: $data_type"
-            echo "========================================"
-            # add here loop merge by radius
-            for R in ${radii[@]}; do
-                echo "Merging for R=$R"
-                singularity exec -e -B /gpfs01 star_star.simg \
-                    hadd -f -k -j output/jets_${data_type}_R${R}.root output/${data_type}/*_R${R}.root
-            done
-        fi
-    done
-}
+    # submit matching if type is embedding
+    submit_matching 
 
-matching_mc_geant() {
+    # meanwhile after submitting matching jobs, merge data trees
     echo ""
     echo "========================================"
-    echo "=========matching mc and geant=========="
+    echo "===========merging data trees==========="
     echo "========================================"
+    # for trigger in "${TRIGGERS[@]}"; do
+    #      merge_trees "$trigger" "data" "merged_data_$trigger"
+    # done
     echo ""
-    mkdir -p output/matching_mc_reco
-    star-submit-beta submit/matching_mc_reco.xml
+    echo "========================================"
+    echo "===========merging is finished==========="
+    echo "========================================"
+
     ./scripts/condor_control.sh
-    echo "merging trees"
 
-    for R in ${radii[@]}; do
-        echo "Merging for R=$R"
-        singularity exec -B /gpfs01 star_star.simg \
-            hadd -f -k -j output/matching_mc_reco/jets_embedding_R${R}.root output/matching_mc_reco/*_R${R}.root
-    done
     echo ""
     echo "========================================"
-    echo "=========matching is finished==========="
+    echo "==========merging embedding trees======="
+    echo "========================================"
+    echo ""
+
+     for trigger in "${TRIGGERS[@]}"; do
+        echo "Merging trees for trigger: $trigger and type: $type"
+        merge_trees "$trigger" "matching" "merged_matching_$trigger"
+    done
+
 }
 
-####################################################################################################
-
-data_types=(JP2 HT2 MB mc geant)
-radii=(0.2 0.3 0.4 0.5 0.6)
-
-cleanup
-rerun_trees
-# if data_types contains mc or geant then run matching_mc_geant
-if [[ " ${data_types[@]} " =~ " mc " ]] || [[ " ${data_types[@]} " =~ " geant " ]]; then
-    matching_mc_geant
-fi
+# Run main function
+main

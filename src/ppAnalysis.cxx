@@ -10,12 +10,10 @@ using std::cerr;
 using std::cout;
 using std::endl;
 
-bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi);
-
 bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R);
 bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R);
 
-void setTriggerBitMap(TStarJetPicoTriggerInfo *trig, TStarJetPicoEventHeader *header);
+double getPythiaWeight(TString filename);
 // Standard ctor
 ppAnalysis::ppAnalysis(const int argc, const char **const argv)
 {
@@ -299,13 +297,6 @@ bool ppAnalysis::InitChains()
 // Main routine for one event.
 EVENTRESULT ppAnalysis::RunEvent()
 {
-   TStarJetVector *sv;
-
-   TStarJetPicoEventHeader *header = 0;
-   vector<TStarJetPicoTriggerInfo *> triggers;
-   UInt_t filehash = 0;
-   TString cname = "";
-
    // Reset results (from last event)
    // -------------------------------
    Result.clear();
@@ -317,127 +308,86 @@ EVENTRESULT ppAnalysis::RunEvent()
    eventid = -(INT_MAX - 1);
    event_sum_pt = 0.;
    njets = 0;
-
    particles.clear();
 
-   // cout <<"============================================" << endl;
-   // cout <<"===================New event================" << endl;
-   // cout <<"============================================" << endl;
+   if (!pReader->NextEvent()) {
+      pReader->PrintStatus();
+      return EVENTRESULT::ENDOFINPUT;
+   }
+   pReader->PrintStatus(10);
 
-   TString trigger_array = "";
+   pFullEvent = pReader->GetOutputContainer()->GetArray();
+   TStarJetPicoEventHeader *header = pReader->GetEvent()->GetHeader();
 
-   double vz, vy, vx, vz_vpd;
-   switch (pars.intype) {
-      // =====================================================
-   case INPICO:
-   case MCPICO:
-      if (!pReader->NextEvent()) {
-         pReader->PrintStatus();
-         return EVENTRESULT::ENDOFINPUT;
-         break;
-      }
-      pReader->PrintStatus(10);
+   // JP2 event trigger - 370621 || 380403
+   // BHT2 trigger:  370531 || 380204
 
-      pFullEvent = pReader->GetOutputContainer()->GetArray();
-      header = pReader->GetEvent()->GetHeader();
-      // cout << "============================================ " << endl;
+   set<int> event_triggers;
+   for (int i = 0; i < header->GetNOfTriggerIds(); i++) {
+      event_triggers.insert(header->GetTriggerId(i));
+   }
 
-      for (int i = 0; i < header->GetNOfTrigObjs(); ++i) {
-         auto trig = pReader->GetEvent()->GetTrigObj(i);
-         // https://github.com/wsu-yale-rhig/TStarJetPicoMaker/blob/82e051867037038001ea1218256ef48e3dfca9a0/StRoot/JetPicoMaker/StMuJetAnalysisTreeMaker.cxx#L772
-         // check if triggerBitMap are not set to zero
-         if (trig->GetTriggerFlag() == 5)
-            continue; // skip triggers with BBC decision
-         // check if triggermap is 0 and fill it
+   // only if not mcpico
 
-         setTriggerBitMap(trig, header);
+   if (pars.intype == INPICO && pars.TriggerName.Contains("JP2") && event_triggers.count(370621) == 0 &&
+       event_triggers.count(380403) == 0)
+      return EVENTRESULT::NOTACCEPTED;
 
-         triggers.push_back(trig);
-      }
-      // fill remaining triggers positions for embedding files where it is not
-      // filled
-      for (auto trig : triggers) {
-         if (trig->isJP2() || trig->isJP1() || trig->isJP0()) {
-            // don't do anything if eta and phi are not 0
-            if (trig->GetEta() != 0 && trig->GetPhi() != 0)
-               continue;
+   if (pars.intype == INPICO && pars.TriggerName.Contains("HT2") && event_triggers.count(370531) == 0 &&
+       event_triggers.count(380204) == 0)
+      return EVENTRESULT::NOTACCEPTED;
 
-            float eta, phi;
-            if (getBarrelJetPatchEtaPhi(trig->GetId(), eta, phi)) {
-               trig->SetEta(eta);
-               trig->SetPhi(phi);
-            }
-         }
-      }
+   vector<TStarJetPicoTriggerInfo *> triggers;
+   for (int i = 0; i < header->GetNOfTrigObjs(); ++i) {
+      auto trig = pReader->GetEvent()->GetTrigObj(i);
+      // https://github.com/wsu-yale-rhig/TStarJetPicoMaker/blob/82e051867037038001ea1218256ef48e3dfca9a0/StRoot/JetPicoMaker/StMuJetAnalysisTreeMaker.cxx#L772
+      // check if triggerBitMap are not set to zero
+      if (trig->GetTriggerFlag() == 5 && trig->GetADC() == 0)
+         continue; // skip triggers with BBC decision
+      triggers.push_back(trig);
+   }
+   // for (auto trig : triggers) {
+   //    //  Bitmap last 7 bits :
+   //    // |jp2|jp1|jp0|bht3|bht2|bht1|0
+   //    cout << " ADC: " << trig->GetADC();
+   //    cout << " Eta: " << trig->GetEta();
+   //    cout << " Phi: " << trig->GetPhi();
+   //    cout << " BitMap: " << trig->GetBitMap() << endl;
+   // }
+   // //  ADC values:
+   // // fHighTowerThreshold[4] = 11 , 15 , 18 , 8  - bht0, bht1, bht2, bht3
+   // // fJetPatchThreshold[3]  = 20 , 28 , 36  -     jp0, jp1, jp2
 
-      // for (Int_t i = 0; i < header->GetNOfTriggerIds(); i++) {
-      //   trigger_array += Form("%7d ", header->GetTriggerId(i));
-      // }
-      // cout << "event triggers : " << trigger_array << endl;
+   refmult = header->GetProperReferenceMultiplicity();
+   eventid = header->GetEventId();
+   runid1 = header->GetRunId();
+   double vz = header->GetPrimaryVertexZ();
+   double vy = header->GetPrimaryVertexY();
+   double vx = header->GetPrimaryVertexX();
+   double vz_vpd = header->GetVpdVz();
 
-      // for (auto trig : triggers) {
-      //   //  Bitmap
-      //   //  last 7 bits :
-      //   // |jp2|jp1|jp0|bht3|bht2|bht1|0
-      //   // if (!trig->isJP2())
-      //   //   continue;
-      //   // cout << " BHT2";
-      //   cout << "Trigger: " << trig->GetId();
-      //   cout << " ADC: " << trig->GetADC();
-      //   cout << " Eta: " << trig->GetEta();
-      //   cout << " Phi: " << trig->GetPhi();
-      //   cout << " BitMap: " << trig->GetBitMap() << endl;
-      // }
+   QA_hist.vx->Fill(vx);
+   QA_hist.vy->Fill(vy);
+   QA_hist.vz->Fill(vz);
+   QA_hist.vz_vpd->Fill(vz_vpd);
+   QA_hist.vz_diff->Fill(vz_vpd - vz);
 
-      // //  ADC values:
-      // // fHighTowerThreshold[4] = 11 , 15 , 18 , 8  - bht0, bht1, bht2, bht3
-      // // fJetPatchThreshold[3]  = 20 , 28 , 36  -     jp0, jp1, jp2
+   // if vpd is available, use it to discard events in MB trigger only
+   if (pars.TriggerName.Contains("MB") && abs(vz_vpd - vz) > 6) {
+      return EVENTRESULT::NOTACCEPTED;
+   }
 
-      // // (500205) BHT2 trigger Id
-      // // (500215) BHT2 trigger Id
-      // // (500401) JP2 trigger Id
-      // // (500411) JP2 trigger Id
-
-      //    fTrigSel.Contains("ppHT"))
-      //    mTrigId==370541 || mTrigId==370542 || mTrigId==370351)   //
-      //    BHT0*BBCMB*TOF0, BHT0*BBCMB*TOF0, MTD*BHT3
-      //   fTrigSel.Contains("ppJP2")) {
-      //   mTrigId==370621)		//  JP2
-      //   mTrigId==370601 || mTrigId==370611
-
-      refmult = header->GetProperReferenceMultiplicity();
-      eventid = header->GetEventId();
-      runid1 = header->GetRunId();
-      vz = header->GetPrimaryVertexZ();
-      vy = header->GetPrimaryVertexY();
-      vx = header->GetPrimaryVertexX();
-      vz_vpd = header->GetVpdVz();
-
-      QA_hist.vx->Fill(vx);
-      QA_hist.vy->Fill(vy);
-      QA_hist.vz->Fill(vz);
-      QA_hist.vz_vpd->Fill(vz_vpd);
-      QA_hist.vz_diff->Fill(vz_vpd - vz);
-
-      // if vpd is available, use it to discard events in MB trigger only
-      if (pars.TriggerName.Contains("MB") && abs(vz_vpd - vz) > 6) {
-         return EVENTRESULT::NOTACCEPTED;
-      }
-
-      // For GEANT: Need to devise a runid that's unique but also
-      // reproducible to match Geant and GeantMc data.
-      if (pars.UseGeantNumbering) {
-         TString cname = gSystem->BaseName(pReader->GetInputChain()->GetCurrentFile()->GetName());
-         UInt_t filehash = cname.Hash();
-         while (filehash > INT_MAX - 100000)
-            filehash -= INT_MAX / 4; // some random large number
-         if (filehash < 1000000)
-            filehash += 1000001;
-         runid = filehash;
-         eventid = pReader->GetNOfCurrentEvent();
-      }
-      break;
-   default: cerr << "Unknown intype " << pars.intype << endl; return EVENTRESULT::PROBLEM;
+   // For GEANT: Need to devise a runid that's unique but also
+   // reproducible to match Geant and GeantMc data.
+   if (pars.UseGeantNumbering) {
+      TString cname = gSystem->BaseName(pReader->GetInputChain()->GetCurrentFile()->GetName());
+      UInt_t filehash = cname.Hash();
+      while (filehash > INT_MAX - 100000)
+         filehash -= INT_MAX / 4; // some random large number
+      if (filehash < 1000000)
+         filehash += 1000001;
+      runid = filehash;
+      eventid = pReader->GetNOfCurrentEvent();
    }
 
    TList *tracksList = pReader->GetListOfSelectedTracks();
@@ -447,7 +397,7 @@ EVENTRESULT ppAnalysis::RunEvent()
    // Fill particle container
    // -----------------------
    for (int i = 0; i < pFullEvent->GetEntries(); ++i) {
-      sv = (TStarJetVector *)pFullEvent->At(i);
+      TStarJetVector *sv = (TStarJetVector *)pFullEvent->At(i);
       int trackid = sv->GetTrackID();
       int container_id = sv->GetTowerID();
 
@@ -527,7 +477,7 @@ EVENTRESULT ppAnalysis::RunEvent()
 
    if (pars.InputName.Contains("pt-hat")) {
       TString currentfile = pReader->GetInputChain()->GetCurrentFile()->GetName();
-      weight = LookupRun12Xsec(currentfile);
+      weight = getPythiaWeight(currentfile);
       if (fabs(weight - 1) < 1e-4) {
          throw std::runtime_error("mcweight unchanged!");
       }
@@ -659,7 +609,8 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pa
    // Event and track selection
    // -------------------------
    TStarJetPicoEventCuts *evCuts = reader.GetEventCuts();
-   evCuts->SetTriggerSelection("All"); // All, MB, HT, pp, ppHT, ppJP
+   // evCuts->SetTriggerSelection(pars.TriggerName); // All, MB, HT, pp, ppHT, ppJP
+
    // Additional cuts
    evCuts->SetVertexZCut(pars.VzCut);
    evCuts->SetRefMultCut(pars.RefMultCut);
@@ -742,83 +693,26 @@ void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader)
 }
 
 //----------------------------------------------------------------------
-double LookupRun12Xsec(TString filename)
+double getPythiaWeight(TString filename)
 {
-   const int NUMBEROFPT = 13;
-   const static double XSEC[NUMBEROFPT] = {9.00176,     1.46259,     0.354407,    0.151627,    0.0249102,
-                                           0.00584656,  0.0023021,   0.000342608, 4.56842e-05, 9.71569e-06,
-                                           4.69593e-07, 2.69062e-08, 1.43197e-09};
+   const vector<double> cross_section_mb = {9.00176,     1.46259,     0.354407,    0.151627,    0.0249102,
+                                            0.00584656,  0.0023021,   0.000342608, 4.56842e-05, 9.71569e-06,
+                                            4.69593e-07, 2.69062e-08, 1.43197e-09};
 
-   const static double NUMBEROFEVENT[NUMBEROFPT] = {3614773,  3706843, 3709985, 3563592, 3637343, 17337984, 17233020,
-                                                    16422119, 3547865, 2415179, 2525739, 1203188, 1264931};
+   const vector<double> n_events = {3614773,  3706843, 3709985, 3563592, 3637343, 17337984, 17233020,
+                                    16422119, 3547865, 2415179, 2525739, 1203188, 1264931};
 
-   const static vector<string> vptbins = {"pt-hat23_",   "pt-hat34_",   "pt-hat45_",   "pt-hat57_",   "pt-hat79_",
-                                          "pt-hat911_",  "pt-hat1115_", "pt-hat1520_", "pt-hat2025_", "pt-hat2535_",
-                                          "pt-hat3545_", "pt-hat4555_", "pt-hat55999_"};
-   for (int i = 0; i < vptbins.size(); ++i) {
-      if (filename.Contains(vptbins.at(i).data()))
-         return XSEC[i] / NUMBEROFEVENT[i];
+   const static vector<string> pt_hat_bins = {"pt-hat23_",   "pt-hat34_",   "pt-hat45_",   "pt-hat57_",   "pt-hat79_",
+                                              "pt-hat911_",  "pt-hat1115_", "pt-hat1520_", "pt-hat2025_", "pt-hat2535_",
+                                              "pt-hat3545_", "pt-hat4555_", "pt-hat55999_"};
+
+   for (int i = 0; i < pt_hat_bins.size(); ++i) {
+      if (filename.Contains(pt_hat_bins.at(i).data())) {
+         double weight = cross_section_mb[i] / n_events[i];
+         return weight;
+      }
    }
-
    return -1;
-}
-
-void print_assert(const char *exp, const char *file, int line)
-{
-   std::cerr << "Assertion '" << exp << "' failed in '" << file << "' at line '" << line << "'" << std::endl;
-   std::terminate();
-}
-
-#define always_assert(exp) ((exp) ? (void)0 : print_assert(#exp, __FILE__, __LINE__))
-
-float getJetPatchPhi(int jetPatch)
-{
-   return TVector2::Phi_mpi_pi((150 - (jetPatch % 6) * 60) * TMath::DegToRad());
-}
-
-bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi)
-{
-   // Sanity check
-   if (jetPatch < 0 || jetPatch >= 18)
-      return false;
-   // The jet patches are numbered starting with JP0 centered at 150 degrees
-   // looking from the West into the IR (intersection region) and increasing
-   // clockwise, i.e. JP1 at 90 degrees, JP2 at 30 degrees, etc. On the East
-   // side the numbering picks up at JP6 centered again at 150 degrees and
-   // increasing clockwise (again as seen from the *West* into the IR). Thus
-   // JP0 and JP6 are in the same phi location in the STAR coordinate system.
-   // So are JP1 and JP7, etc.
-   // JP locations:
-   // Jet Patch# Eta   Phi,degrees(rad)   Quadrant
-   // 0          0.5   150 (2.618)           10'
-   // 1          0.5   90 (1.5708)           12'
-   // 2          0.5   30 (0.5236)            2'
-   // 3          0.5  -30 (-0.5236)           4'
-   // 4          0.5  -90 (-1.5708)           6'
-   // 5          0.5  -150 (2.618)            8'
-   // 6         -0.5   150 (2.618)           10'
-   // 7         -0.5   90 (1.5708)           12'
-   // 8         -0.5   30 (0.5236)            2'
-   // 9         -0.5  -30 (-0.5236)           4'
-   // 10        -0.5  -90 (-1.5708)           6'
-   // 11        -0.5  -150 (2.618)            8'
-   // 12        -0.1   150 (2.618)           10'
-   // 13        -0.1   90 (1.5708)           12'
-   // 14        -0.1   30 (0.5236)            2'
-   // 15        -0.1  -30 (-0.5236)           4'
-   // 16        -0.1  -90 (-1.5708)           6'
-   // 17        -0.1  -150 (2.618)            8'
-
-   // http://drupal.star.bnl.gov/STAR/system/files/BEMC_y2004.pdf
-
-   if (jetPatch >= 0 && jetPatch < 6)
-      eta = 0.5;
-   if (jetPatch >= 6 && jetPatch < 12)
-      eta = -0.5;
-   if (jetPatch >= 12 && jetPatch < 18)
-      eta = -0.1;
-   phi = getJetPatchPhi(jetPatch);
-   return true;
 }
 
 bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R)
@@ -840,7 +734,6 @@ bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float 
 
 bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R)
 {
-
    // print jet towers:
    PseudoJet NeutralPart = join(OnlyNeutral(jet.constituents()));
    for (auto trigger : triggers) {
@@ -849,11 +742,9 @@ bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float 
          int trigger_towerid = trigger->GetId();
          for (PseudoJet &part : NeutralPart.constituents()) {
             if (part.user_info<JetAnalysisUserInfo>().GetNumber() == trigger_towerid) {
-
                return true;
             }
          }
-
          double eta = trigger->GetEta();
          double phi = trigger->GetPhi();
          double deta = jet.eta() - eta;
@@ -863,74 +754,4 @@ bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float 
       }
    }
    return false;
-}
-
-void setTriggerBitMap(TStarJetPicoTriggerInfo *trig, TStarJetPicoEventHeader *header)
-{
-
-   // check if trigmap is not 0
-   std::bitset<32> original_bitmap = trig->GetBitMap();
-   Int_t trigMap = original_bitmap.to_ulong(); // get the original bitmap
-   if (trigMap != 0) {
-      return; // if the bitmap is already set, no need to set it again
-   }
-   // bitmap layout :
-   // bit 1: barrel high tower 1
-   // bit 2: barrel high tower 2
-   // bit 3: barrel high tower 3
-   // bit 4: jet patch 0
-   // bit 5: jet patch 1
-   // bit 6: jet patch 2
-   // bit 7-31: open
-   // valid only for pp12 data:
-   header->SetJetPatchThreshold(0, 20);  // jp0
-   header->SetJetPatchThreshold(1, 28);  // jp1
-   header->SetJetPatchThreshold(2, 36);  // jp2
-   header->SetHighTowerThreshold(0, 11); // bht0
-   header->SetHighTowerThreshold(1, 15); // bht1
-   header->SetHighTowerThreshold(2, 18); // bht2
-   header->SetHighTowerThreshold(3, 8);  // bht3
-   // //  ADC values:
-   // // fHighTowerThreshold[4] = 11 , 15 , 18 , 8  - bht0, bht1, bht2, bht3
-   // // fJetPatchThreshold[3]  = 20 , 28 , 36  -     jp0, jp1, jp2
-
-   Float_t eta = trig->GetEta();
-   // compare eta to -0.100000
-   bool jp_eta_flag = false;
-   if (eta > -0.10000001 && eta < -0.09999999999)
-      jp_eta_flag = true;
-   else if (eta == 0.5 || eta == -0.5)
-      jp_eta_flag = true;
-
-   if (trig->GetId() <= 17 && jp_eta_flag) {
-
-      Int_t jpAdc = trig->GetADC();
-      UInt_t jp0 = header->GetJetPatchThreshold(0);
-      UInt_t jp1 = header->GetJetPatchThreshold(1);
-      UInt_t jp2 = header->GetJetPatchThreshold(2);
-
-      if (jp0 > 0 && jpAdc > jp0)
-         trigMap |= 1 << 4;
-      if (jp1 > 0 && jpAdc > jp1)
-         trigMap |= 1 << 5;
-      if (jp2 > 0 && jpAdc > jp2)
-         trigMap |= 1 << 6;
-
-      trig->SetBitMap(trigMap);
-   } else // it means bht
-   {
-      Int_t bhtAdc = trig->GetADC();
-      UInt_t bht1 = header->GetHighTowerThreshold(1);
-      UInt_t bht2 = header->GetHighTowerThreshold(2);
-      UInt_t bht3 = header->GetHighTowerThreshold(3);
-
-      if (bht1 > 0 && bhtAdc > bht1)
-         trigMap |= 1 << 1;
-      if (bht2 > 0 && bhtAdc > bht2)
-         trigMap |= 1 << 2;
-      if (bht3 > 0 && bhtAdc > bht3)
-         trigMap |= 1 << 3;
-
-      trig->SetBitMap(trigMap);
-   }
 }
