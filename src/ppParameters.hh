@@ -116,7 +116,7 @@ public:
    TString InputName = "test.root";
    INTYPE intype = INPICO;        ///< Input type (can be a pico dst, a result tree, an MC tree)
    TString ChainName = "JetTree"; ///< Name of the input chain
-   TString TriggerName = "ppJP2";
+   TString TriggerName = "JP2";
    TString OutFileName = "test.root";
 };
 #endif // PPPARAMETERS_HH

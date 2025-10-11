@@ -21,15 +21,20 @@ treeType="JetTree"
 picoType="pico"
 jet_min_pt=5
 constituent_max_pt=30
+constituent_eta_max=1.0
 trigger=$data_type
+geantnum=0
 # Determine trigger type and tree/pico settings based on data_type
 
 # if data_type contains "mc" like mc_HT2 or mc_JP2 or mc_MB
 if [[ $data_type == mc_* ]]; then
     treeType="JetTreeMc"
     picoType="mcpico"
-    jet_min_pt=4
     constituent_max_pt=35
+    geantnum=1
+fi
+if [[ $data_type == geant_* ]]; then
+    geantnum=1
 fi
 
 
@@ -39,29 +44,31 @@ args=(
     -intype "$picoType"
     -c "$treeType"
     -trig "$trigger"
-    -o "$output_file"
     -N -1
     -pj $jet_min_pt 2000
     -pc 0.2 $constituent_max_pt
     -lja "antikt"
-    -ec 1
-    -geantnum 1
+    -ec $constituent_eta_max
+    -geantnum $geantnum
+    -hadcorr 1
+    -towunc 0
+    -fakeeff 1
 )
 
-# Append hadronic correction argument if running on Monte Carlo data
-if [[ $data_type == geant_* ]]; then
-    args+=(-hadcorr 0.9999999)
-    args+=(-towunc 0)
-    args+=(-fakeeff 1)
-fi
-
+# remove 3 last rows if data_type is mc_*
 if [[ $data_type == mc_* ]]; then
+    unset 'args[-1]'
+    unset 'args[-1]'
+    unset 'args[-1]'
+    unset 'args[-1]'
+    unset 'args[-1]'
+    unset 'args[-1]'
     args+=(-jetnef 1)
 fi
 
 # --- Sweep over jet radius ---
 RADII=(0.2 0.3 0.4 0.5 0.6)
-
+#  RADII=(0.2)
 echo "Running with input:  $input_file"
 echo "Data type:           $data_type"
 
@@ -77,6 +84,8 @@ for R in "${RADII[@]}"; do
     echo "Writing to output:   ${output_file_R}"
     printf ' %q' "${args[@]}"; echo
     ./bin/RunppAna "${args[@]}"
+
+    echo "command was ./bin/RunppAna ${args[@]}"
     # Remove the last 4 elements (-R and its value) to reset for the next iteration
     unset 'args[-1]'
     unset 'args[-1]'

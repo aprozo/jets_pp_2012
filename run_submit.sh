@@ -5,9 +5,9 @@ set -uo pipefail
 # CONFIGURATION
 ################################################################################
 
-# Select which triggers to process (HT2, JP2, MB)
-TRIGGERS=(JP2 HT2)
-# Select which types to process (data, embedding)
+# Select which triggers to process (HT2 JP2 MB)
+TRIGGERS=(HT2 JP2)
+# Select which types to process (data embedding)
 TYPE=(data embedding)
 
 RADII=(0.2 0.3 0.4 0.5 0.6)
@@ -73,56 +73,53 @@ submit_matching() {
 
 
 main() {
+
+    # source ~/.cshrc_nfs4
+    # source ~/.login_nfs4
+
     cleanup
     echo "Triggers: ${TRIGGERS[*]} | Types: ${TYPE[*]}"
-    echo "========================================"
     echo "=============sending data==============="
-    echo "========================================"
     echo ""
 
-    # submit_trees
+    submit_trees
     ./scripts/condor_control.sh
     echo ""
-    echo "========================================"
     echo "=========trees are finished============="
-    echo "========================================"
     echo ""
-    # merge data trees
-    
+   
 
-    # submit matching if type is embedding
-    submit_matching 
+    # submit matching if type has embedding
+    if [[ " ${TYPE[*]} " == *" embedding "* ]]; then
+
+        echo "===========submitting matching=========="
+        echo ""
+        submit_matching
+    fi
 
     # meanwhile after submitting matching jobs, merge data trees
     echo ""
-    echo "========================================"
     echo "===========merging data trees==========="
-    echo "========================================"
-    # for trigger in "${TRIGGERS[@]}"; do
-    #      merge_trees "$trigger" "data" "merged_data_$trigger"
-    # done
+    for trigger in "${TRIGGERS[@]}"; do
+         merge_trees "$trigger" "data" "merged_data_$trigger"
+    done
     echo ""
-    echo "========================================"
     echo "===========merging is finished==========="
-    echo "========================================"
 
     ./scripts/condor_control.sh
 
     echo ""
-    echo "========================================"
     echo "==========merging embedding trees======="
-    echo "========================================"
     echo ""
-
-     for trigger in "${TRIGGERS[@]}"; do
-        echo "Merging trees for trigger: $trigger and type: $type"
-        merge_trees "$trigger" "matching" "merged_matching_$trigger"
-    done
+    if [[ " ${TYPE[*]} " == *" embedding "* ]]; then
+         for trigger in "${TRIGGERS[@]}"; do
+            echo "Merging matching trees for trigger: $trigger"
+            merge_trees "$trigger" "matching" "merged_matching_$trigger"
+        done
+    fi
 
     echo ""
-    echo "========================================"
     echo "=========all jobs are finished=========="
-    echo "========================================"
 
 }
 
