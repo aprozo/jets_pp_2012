@@ -13,6 +13,7 @@ using std::endl;
 bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R);
 bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R);
 void setTriggerBitMap(TStarJetPicoTriggerInfo *trig, TStarJetPicoEventHeader *header);
+bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi);
 
 double getPythiaWeight(TString filename);
 // Standard ctor
@@ -329,34 +330,83 @@ EVENTRESULT ppAnalysis::RunEvent()
    }
 
    // only if not mcpico
+   map<TString, set<int>> trigger_map_2012;
+   trigger_map_2012["JP2"] = {370621, 380403};
+   trigger_map_2012["HT2"] = {370531, 380204, 500205}; // 500205 - leftover in Youqi embedding trees
+   trigger_map_2012["MB"] = {370011, 380002};
 
-   if (pars.intype == INPICO && pars.TriggerName.Contains("JP2") && event_triggers.count(370621) == 0 &&
-       event_triggers.count(380403) == 0)
-      return EVENTRESULT::NOTACCEPTED;
+   TString current_trigger = "";
+   if (pars.TriggerName.Contains("JP2"))
+      current_trigger = "JP2";
+   else if (pars.TriggerName.Contains("HT2"))
+      current_trigger = "HT2";
+   else if (pars.TriggerName.Contains("MB"))
+      current_trigger = "MB";
 
-   if (pars.intype == INPICO && pars.TriggerName.Contains("HT2") && event_triggers.count(370531) == 0 &&
-       event_triggers.count(380204) == 0)
-      return EVENTRESULT::NOTACCEPTED;
+   if (pars.intype == INPICO) {
+      bool has_trigger = false;
+      for (auto trig_id : trigger_map_2012[current_trigger]) {
+         if (event_triggers.count(trig_id) != 0) {
+            has_trigger = true;
+            break;
+         }
+      }
+      if (!has_trigger)
+         return EVENTRESULT::NOTACCEPTED;
+   }
 
    vector<TStarJetPicoTriggerInfo *> triggers;
+   TStarJetPicoTowerCuts *towerCuts = pReader->GetTowerCuts();
+   vector<int> HT2_trigger_ids;
+   int count_bad_tower_triggers = 0;
+
    for (int i = 0; i < header->GetNOfTrigObjs(); ++i) {
       auto trig = pReader->GetEvent()->GetTrigObj(i);
       // https://github.com/wsu-yale-rhig/TStarJetPicoMaker/blob/82e051867037038001ea1218256ef48e3dfca9a0/StRoot/JetPicoMaker/StMuJetAnalysisTreeMaker.cxx#L772
       // check if triggerBitMap are not set to zero
       if (trig->GetTriggerFlag() == 5 && trig->GetADC() == 0)
          continue; // skip triggers with BBC decision
-
       setTriggerBitMap(trig, header);
+
+      if (trig->isBHT2())
+         HT2_trigger_ids.push_back(trig->GetId());
+
+      bool is_bad_tower = false;
+      for (Int_t ntower = 0; ntower < header->GetNOfTowers(); ntower++) {
+         TStarJetPicoTower *ptower = pReader->GetEvent()->GetTower(ntower);
+         if (ptower->GetId() == trig->GetId() && !towerCuts->IsTowerOK(ptower, pReader->GetEvent())) {
+            is_bad_tower = true;
+            count_bad_tower_triggers++;
+            break;
+         }
+      }
+      if (is_bad_tower)
+         continue; // skip triggers from bad towers
       triggers.push_back(trig);
    }
-   // for (auto trig : triggers) {
-   //    //  Bitmap last 7 bits :
-   //    // |jp2|jp1|jp0|bht3|bht2|bht1|0
-   //    cout << " ADC: " << trig->GetADC();
-   //    cout << " Eta: " << trig->GetEta();
-   //    cout << " Phi: " << trig->GetPhi();
-   //    cout << " BitMap: " << trig->GetBitMap() << endl;
-   // }
+
+   if (HT2_trigger_ids.size() > 0 &&
+       count_bad_tower_triggers == HT2_trigger_ids.size()) { // all HT2 triggers are caused by bad towers
+      return EVENTRESULT::NOTACCEPTED;
+   }
+
+   // exclude
+
+   for (auto trig : triggers) {
+
+      if (trig->isJP2() || trig->isJP1() || trig->isJP0()) {
+         // don't do anything if eta and phi are not 0
+         // if (trig->GetEta() != 0 && trig->GetPhi() != 0)
+         //    continue;
+
+         float eta, phi;
+         if (getBarrelJetPatchEtaPhi(trig->GetId(), eta, phi)) {
+            trig->SetEta(eta);
+            trig->SetPhi(phi);
+         }
+      }
+   }
+
    // //  ADC values:
    // // fHighTowerThreshold[4] = 11 , 15 , 18 , 8  - bht0, bht1, bht2, bht3
    // // fJetPatchThreshold[3]  = 20 , 28 , 36  -     jp0, jp1, jp2
@@ -727,7 +777,8 @@ bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float 
          phi = trigger->GetPhi();
          double deta = jet.eta() - eta;
          double dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
-         if ((fabs(deta) < R) && (fabs(dphi) < R)) {
+         double dr = sqrt(deta * deta + dphi * dphi);
+         if (dr <= R) {
             return true;
          }
       }
@@ -748,12 +799,13 @@ bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float 
                return true;
             }
          }
-         double eta = trigger->GetEta();
-         double phi = trigger->GetPhi();
-         double deta = jet.eta() - eta;
-         double dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
-         if ((fabs(deta) < R) && (fabs(dphi) < R))
-            return true;
+         // double eta = trigger->GetEta();
+         // double phi = trigger->GetPhi();
+         // double deta = jet.eta() - eta;
+         // double dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
+         // double dr = sqrt(deta * deta + dphi * dphi);
+         // if (dr < R)
+         //    return true;
       }
    }
    return false;
@@ -826,4 +878,54 @@ void setTriggerBitMap(TStarJetPicoTriggerInfo *trig, TStarJetPicoEventHeader *he
 
       trig->SetBitMap(trigMap);
    }
+}
+
+float getJetPatchPhi(int jetPatch)
+{
+   return TVector2::Phi_mpi_pi((150 - (jetPatch % 6) * 60) * TMath::DegToRad());
+}
+
+bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi)
+{
+   // Sanity check
+   if (jetPatch < 0 || jetPatch >= 18)
+      return false;
+   // The jet patches are numbered starting with JP0 centered at 150 degrees
+   // looking from the West into the IR (intersection region) and increasing
+   // clockwise, i.e. JP1 at 90 degrees, JP2 at 30 degrees, etc. On the East
+   // side the numbering picks up at JP6 centered again at 150 degrees and
+   // increasing clockwise (again as seen from the *West* into the IR). Thus
+   // JP0 and JP6 are in the same phi location in the STAR coordinate system.
+   // So are JP1 and JP7, etc.
+   // JP locations:
+   // Jet Patch# Eta   Phi,degrees(rad)   Quadrant
+   // 0          0.5   150 (2.618)           10'
+   // 1          0.5   90 (1.5708)           12'
+   // 2          0.5   30 (0.5236)            2'
+   // 3          0.5  -30 (-0.5236)           4'
+   // 4          0.5  -90 (-1.5708)           6'
+   // 5          0.5  -150 (2.618)            8'
+   // 6         -0.5   150 (2.618)           10'
+   // 7         -0.5   90 (1.5708)           12'
+   // 8         -0.5   30 (0.5236)            2'
+   // 9         -0.5  -30 (-0.5236)           4'
+   // 10        -0.5  -90 (-1.5708)           6'
+   // 11        -0.5  -150 (2.618)            8'
+   // 12        -0.1   150 (2.618)           10'
+   // 13        -0.1   90 (1.5708)           12'
+   // 14        -0.1   30 (0.5236)            2'
+   // 15        -0.1  -30 (-0.5236)           4'
+   // 16        -0.1  -90 (-1.5708)           6'
+   // 17        -0.1  -150 (2.618)            8'
+
+   // http://drupal.star.bnl.gov/STAR/system/files/BEMC_y2004.pdf
+
+   if (jetPatch >= 0 && jetPatch < 6)
+      eta = 0.5f;
+   if (jetPatch >= 6 && jetPatch < 12)
+      eta = -0.5f;
+   if (jetPatch >= 12 && jetPatch < 18)
+      eta = -0.1f;
+   phi = getJetPatchPhi(jetPatch);
+   return true;
 }

@@ -44,6 +44,7 @@
 #include "TStarJetPicoUtils.h"
 #include "TStarJetVector.h"
 #include "TStarJetVectorContainer.h"
+#include "TStarJetPicoTower.h"
 
 #include "TDatabasePDG.h"
 #include "TParticlePDG.h"
