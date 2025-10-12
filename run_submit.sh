@@ -106,21 +106,18 @@ main() {
     echo ""
     echo "===========merging is finished==========="
 
-    ./scripts/condor_control.sh
-
-    echo ""
-    echo "==========merging embedding trees======="
-    echo ""
     if [[ " ${TYPE[*]} " == *" embedding "* ]]; then
+        ./scripts/condor_control.sh
+        echo ""
+        echo "=========all jobs are finished=========="
+        echo ""
+        echo "==========merging embedding trees======="
+        echo ""
          for trigger in "${TRIGGERS[@]}"; do
             echo "Merging matching trees for trigger: $trigger"
             merge_trees "$trigger" "matching" "merged_matching_$trigger"
         done
     fi
-
-    echo ""
-    echo "=========all jobs are finished=========="
-
 }
 
 # Run main function

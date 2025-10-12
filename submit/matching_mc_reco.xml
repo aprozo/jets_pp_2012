@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
 
-<job name="matching_mc_reco_" maxFilesPerProcess="10" fileListSyntax="paths" simulateSubmission ="false">
+<job name="matching_mc_reco_" maxFilesPerProcess="4" fileListSyntax="paths" simulateSubmission ="false">
 
     <input URL="filelist:/gpfs01/star/pwg/prozorov/jets_pp_2012/lists/trees/embedding_&trigger;.list" nFiles="all" />
 

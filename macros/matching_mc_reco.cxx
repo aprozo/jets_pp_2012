@@ -246,6 +246,13 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
    for (Long64_t iEvent = 0; iEvent < nEvents; ++iEvent) // event loop
    {
       McChain->GetEntry(iEvent);
+
+      int recoEvent = RecoChain->GetEntryNumberWithIndex(mc.runid, mc.eventid);
+
+      if (recoEvent < 0) { // no reco event found event did not trigger
+         continue;
+      }
+
       // if (abs(mc.vz) > 30) // skip bad events with high weights
       //   continue;
       if (accepted_events_list.count(mc.event_sum_pt) > 0)
@@ -261,8 +268,6 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
                                 tempMcJet->Rapidity(), mc.neutral_fraction[j], mc.trigger_match_JP2[j],
                                 mc.n_constituents[j], mc.eventid, mc.weight, mc.mult, mc.trigger_match_HT2[j], mc.vz));
       }
-
-      int recoEvent = RecoChain->GetEntryNumberWithIndex(mc.runid, mc.eventid);
 
       vector<MyJet> recoJets;
       if (recoEvent >= 0) {
@@ -364,7 +369,7 @@ vector<MatchedJetPair> MatchJetsEtaPhi(const vector<MyJet> &McJets, const vector
             hDeltaR->Fill(deltaR);
          }
 
-         if (deltaR < 0.6 * R && deltaR < minDeltaR) {
+         if (deltaR < R && deltaR < minDeltaR) {
             minDeltaR = deltaR;
             bestMatch = rcit;
             isMatched = true;
