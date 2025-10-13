@@ -209,6 +209,12 @@ int main(int argc, const char **argv)
          // fill the bin with the same run name
          hEventsRun->Fill(Form("%i", runid1), 1);
 
+         if (pars.InputName.Contains("hat") && pars.intype == INPICO &&
+             ret == EVENTRESULT::NOJETS) { // fill events only for Geant only to account for missed jets
+            ResultTree->Fill();
+            continue;
+         }
+
          if (njets == 0)
             continue;
 

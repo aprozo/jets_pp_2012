@@ -521,14 +521,12 @@ EVENTRESULT ppAnalysis::RunEvent()
       particles.back().set_user_info(new JetAnalysisUserInfo(3 * sv->GetCharge(), sv->mc_pdg_pid(), "", container_id));
    }
 
-   mult = particles.size();
-   if (particles.size() == 0)
-      return EVENTRESULT::NOCONSTS;
+   // mult = particles.size();
 
    // For pythia, use cross section as weight
    // ---------------------------------------
 
-   if (pars.InputName.Contains("pt_hat")) {
+   if (pars.InputName.Contains("hat")) {
       TString currentfile = pReader->GetInputChain()->GetCurrentFile()->GetName();
       weight = getPythiaWeight(currentfile);
       if (fabs(weight - 1) < 1e-4) {
@@ -755,9 +753,9 @@ double getPythiaWeight(TString filename)
    const vector<double> n_events = {3614773,  3706843, 3709985, 3563592, 3637343, 17337984, 17233020,
                                     16422119, 3547865, 2415179, 2525739, 1203188, 1264931};
 
-   const static vector<string> pt_hat_bins = {"pt_hat23_",   "pt_hat34_",   "pt_hat45_",   "pt_hat57_",   "pt_hat79_",
-                                              "pt_hat911_",  "pt_hat1115_", "pt_hat1520_", "pt_hat2025_", "pt_hat2535_",
-                                              "pt_hat3545_", "pt_hat4555_", "pt_hat55999_"};
+   const static vector<string> pt_hat_bins = {"hat23_",   "hat34_",   "hat45_",   "hat57_",   "hat79_",
+                                              "hat911_",  "hat1115_", "hat1520_", "hat2025_", "hat2535_",
+                                              "hat3545_", "hat4555_", "hat55999_"};
 
    for (int i = 0; i < pt_hat_bins.size(); ++i) {
       if (filename.Contains(pt_hat_bins.at(i).data())) {

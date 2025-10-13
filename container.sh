@@ -23,7 +23,6 @@ jet_min_pt=5
 constituent_max_pt=30
 constituent_eta_max=1.0
 trigger=$data_type
-geantnum=0
 # Determine trigger type and tree/pico settings based on data_type
 
 # if data_type contains "mc" like mc_HT2 or mc_JP2 or mc_MB
@@ -31,11 +30,8 @@ if [[ $data_type == mc_* ]]; then
     treeType="JetTreeMc"
     picoType="mcpico"
     constituent_max_pt=35
-    geantnum=1
 fi
-if [[ $data_type == geant_* ]]; then
-    geantnum=1
-fi
+
 
 
 # Define arguments for the RunppAna command
@@ -45,11 +41,11 @@ args=(
     -c "$treeType"
     -trig "$trigger"
     -N -1
-    -pj $jet_min_pt 2000
+    -pj $jet_min_pt 200
     -pc 0.2 $constituent_max_pt
     -lja "antikt"
     -ec $constituent_eta_max
-    -geantnum $geantnum
+    -geantnum 1
     -hadcorr 1
     -towunc 0
     -fakeeff 1
@@ -68,7 +64,7 @@ fi
 
 # --- Sweep over jet radius ---
 RADII=(0.2 0.3 0.4 0.5 0.6)
-#  RADII=(0.2)
+#  RADII=(0.6)
 echo "Running with input:  $input_file"
 echo "Data type:           $data_type"
 
