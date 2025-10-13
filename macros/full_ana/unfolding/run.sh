@@ -8,11 +8,11 @@ export ROOT_INCLUDE_PATH="${ROOUNFOLD_HOME}/include:${ROOT_INCLUDE_PATH}"
 export LD_LIBRARY_PATH="${ROOUNFOLD_HOME}/lib:${ROOTSYS}/lib:${LD_LIBRARY_PATH}"
  # keep conda OFF here
 
-# TRIGGERS=(JP2 HT2)
-# RADII=(0.2 0.3 0.4 0.5 0.6)
+TRIGGERS=(JP2 HT2)
+RADII=(0.2 0.3 0.4 0.5 0.6)
 
-TRIGGERS=(JP2)
-RADII=(0.6)
+# TRIGGERS=(JP2)
+# RADII=(0.6)
 
 for TRIGGER in "${TRIGGERS[@]}"; do
   for R in "${RADII[@]}"; do
