@@ -14,6 +14,7 @@ bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float 
 bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R);
 void setTriggerBitMap(TStarJetPicoTriggerInfo *trig, TStarJetPicoEventHeader *header);
 bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi);
+bool isInsideJetPatch(const int &jetPatch, const float &jetEta, const float &jetPhi);
 
 double getPythiaWeight(TString filename);
 // Standard ctor
@@ -331,9 +332,9 @@ EVENTRESULT ppAnalysis::RunEvent()
 
    // only if not mcpico
    map<TString, set<int>> trigger_map_2012;
-   trigger_map_2012["JP2"] = {370621, 380403};
-   trigger_map_2012["HT2"] = {370531, 380204, 500205}; // 500205 - leftover in Youqi embedding trees
-   trigger_map_2012["MB"] = {370011, 380002};
+   trigger_map_2012["JP2"] = {370621};
+   trigger_map_2012["HT2"] = {370531, 500205}; // 500205 - leftover in Youqi embedding trees
+   trigger_map_2012["MB"] = {370011};
 
    TString current_trigger = "";
    if (pars.TriggerName.Contains("JP2"))
@@ -398,7 +399,6 @@ EVENTRESULT ppAnalysis::RunEvent()
          // don't do anything if eta and phi are not 0
          // if (trig->GetEta() != 0 && trig->GetPhi() != 0)
          //    continue;
-
          float eta, phi;
          if (getBarrelJetPatchEtaPhi(trig->GetId(), eta, phi)) {
             trig->SetEta(eta);
@@ -769,42 +769,29 @@ double getPythiaWeight(TString filename)
 bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R)
 {
    for (auto trigger : triggers) {
-      if (trigger->isJP2()) {
-         float eta, phi;
-         eta = trigger->GetEta();
-         phi = trigger->GetPhi();
-         double deta = jet.eta() - eta;
-         double dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
-         double dr = sqrt(deta * deta + dphi * dphi);
-         if (dr <= R) {
-            return true;
-         }
-      }
+      if (trigger->isJP2() && isInsideJetPatch(trigger->GetId(), jet.eta(), jet.phi()))
+         return true;
    }
    return false;
 }
 
 bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R)
 {
-   // print jet towers:
-   PseudoJet NeutralPart = join(OnlyNeutral(jet.constituents()));
    for (auto trigger : triggers) {
-
-      if (trigger->isBHT2()) {
-         int trigger_towerid = trigger->GetId();
-         for (PseudoJet &part : NeutralPart.constituents()) {
-            if (part.user_info<JetAnalysisUserInfo>().GetNumber() == trigger_towerid) {
-               return true;
-            }
+      if (!trigger->isBHT2())
+         continue;
+      int trigger_towerid = trigger->GetId();
+      for (PseudoJet &part : jet.constituents()) {
+         if (part.user_info<JetAnalysisUserInfo>().GetNumber() == trigger_towerid) {
+            return true;
          }
-         // double eta = trigger->GetEta();
-         // double phi = trigger->GetPhi();
-         // double deta = jet.eta() - eta;
-         // double dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
-         // double dr = sqrt(deta * deta + dphi * dphi);
-         // if (dr < R)
-         //    return true;
       }
+      double eta = trigger->GetEta();
+      double phi = trigger->GetPhi();
+      double deta = jet.eta() - eta;
+      double dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
+      if (sqrt(deta * deta + dphi * dphi) < R)
+         return true;
    }
    return false;
 }
@@ -926,4 +913,29 @@ bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi)
       eta = -0.1f;
    phi = getJetPatchPhi(jetPatch);
    return true;
+}
+
+bool isInsideJetPatch(const int &jetPatch, const float &jetEta, const float &jetPhi)
+{
+   float eta_center, phi_center;
+   if (!getBarrelJetPatchEtaPhi(jetPatch, eta_center, phi_center))
+      return false;
+   // Jet patch size is 1.0 in eta and 60 degrees in phi
+   float etaMin = eta_center - 0.5f;
+   float etaMax = eta_center + 0.5f;
+   float phiMin = TVector2::Phi_mpi_pi(phi_center - 30 * TMath::DegToRad());
+   float phiMax = TVector2::Phi_mpi_pi(phi_center + 30 * TMath::DegToRad());
+   float phi = TVector2::Phi_mpi_pi(jetPhi);
+
+   if (jetEta < etaMin || jetEta > etaMax)
+      return false;
+
+   if (phiMin <= phiMax) {
+      return (phiMin <= phi && phi < phiMax);
+   } else {
+      // Wrapped interval, e.g. [2.8, -2.8] in radians
+      return (phi > phiMin || phi <= phiMax);
+   }
+
+   return false;
 }
