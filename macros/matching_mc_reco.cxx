@@ -23,9 +23,9 @@ struct InputTreeEntry {
    double weight;
    double refmult;
    int njets;
-   double vz;
    int mult;
    float event_sum_pt;
+   bool isTriggerEvent;
    bool trigger_match_HT2[1000];
    double neutral_fraction[1000];
    bool trigger_match_JP2[1000];
@@ -49,7 +49,6 @@ struct MyJet {
    double weight;
    double multiplicity;
    bool trigger_match_HT2;
-   double vz;
 
    float deltaR(const MyJet &other) const
    {
@@ -72,12 +71,11 @@ struct MyJet {
         event_id(-9),
         weight(-9),
         multiplicity(-9),
-        trigger_match_HT2(false),
-        vz(-9) {};
+        trigger_match_HT2(false) {};
 
    MyJet(TStarJetVectorJet _orig, double _pt, double _ptLead, double _eta, double _phi, double _y,
          double _neutral_fraction, bool _trigger_match_JP2, double n_constituents, int _event_id, double _weight,
-         double _multiplicity, bool _trigger_match_HT2, double _vz)
+         double _multiplicity, bool _trigger_match_HT2)
       : orig(_orig),
         pt(_pt),
         ptLead(_ptLead),
@@ -90,8 +88,7 @@ struct MyJet {
         event_id(_event_id),
         weight(_weight),
         multiplicity(_multiplicity),
-        trigger_match_HT2(_trigger_match_HT2),
-        vz(_vz) {};
+        trigger_match_HT2(_trigger_match_HT2) {};
 };
 
 typedef pair<MyJet, MyJet> MatchedJetPair;
@@ -99,7 +96,8 @@ typedef pair<MyJet, MyJet> MatchedJetPair;
 vector<MatchedJetPair> MatchJetsEtaPhi(const vector<MyJet> &McJets, const vector<MyJet> &RecoJets, const double &R);
 
 int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/mc/"
-                                          "tree_pt-hat3545_033_R0.5.root")
+                                          "tree_pt-hat3545_033_R0.5.root",
+                     bool isTest = false)
 {
 
    TString baseName = mcTreeName(mcTreeName.Last('/') + 1, mcTreeName.Length());
@@ -116,6 +114,9 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
    }
 
    TString dirName = "/gpfs01/star/pwg/prozorov/jets_pp_2012/output/" + Trigger + "/embedding/";
+   if (isTest) {
+      dirName = "/gpfs01/star/pwg/prozorov/jets_pp_2012/";
+   }
    // remove prefix mc from base name and add geant
    baseName.ReplaceAll("mc_", "");
    TString geantBaseName = "geant_" + baseName;
@@ -157,7 +158,6 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
    McChain->SetBranchAddress("runid", &mc.runid);
    McChain->SetBranchAddress("weight", &mc.weight);
    McChain->SetBranchAddress("njets", &mc.njets);
-   // McChain->SetBranchAddress("vz", &mc.vz);
    McChain->SetBranchAddress("mult", &mc.mult);
    McChain->SetBranchAddress("event_sum_pt", &mc.event_sum_pt);
    McChain->SetBranchAddress("trigger_match_HT2", mc.trigger_match_HT2);
@@ -178,7 +178,6 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
    RecoChain->SetBranchAddress("runid", &reco.runid);
    RecoChain->SetBranchAddress("weight", &reco.weight);
    RecoChain->SetBranchAddress("njets", &reco.njets);
-   // RecoChain->SetBranchAddress("vz", &reco.vz);
    RecoChain->SetBranchAddress("mult", &reco.mult);
    RecoChain->SetBranchAddress("event_sum_pt", &reco.event_sum_pt);
    RecoChain->SetBranchAddress("trigger_match_HT2", reco.trigger_match_HT2);
@@ -187,6 +186,7 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
    RecoChain->SetBranchAddress("pt", reco.pt);
    RecoChain->SetBranchAddress("ptLead", reco.ptLead);
    RecoChain->SetBranchAddress("n_constituents", reco.n_constituents);
+   RecoChain->SetBranchAddress("isTriggerEvent", &reco.isTriggerEvent);
 
    TFile *fout = new TFile(OutFile, "RECREATE");
    TH1D *hDeltaR = new TH1D("hDeltaR", "#Delta R all; #Delta R", 350, 0, 3.5);
@@ -208,6 +208,7 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
    MyJet outRecoJet;
    MyJet outMcJet;
    double deltaR = -9;
+   bool isTriggerEvent = false;
 
    MatchedTree->Branch("mc_pt", &outMcJet.pt, "mc_pt/D");
    MatchedTree->Branch("mc_ptLead", &outMcJet.ptLead, "mc_ptLead/D");
@@ -217,7 +218,6 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
    MatchedTree->Branch("mc_trigger_match_JP2", &outMcJet.trigger_match_JP2, "mc_trigger_match_JP2/O");
 
    MatchedTree->Branch("mc_n_constituents", &outMcJet.n_constituents, "mc_n_constituents/I");
-   // MatchedTree->Branch("mc_event_id", &outMcJet.vz, "mc_event_id/D");
    MatchedTree->Branch("mc_weight", &outMcJet.weight, "mc_weight/D");
    MatchedTree->Branch("mc_multiplicity", &outMcJet.multiplicity, "mc_multiplicity/D");
    MatchedTree->Branch("mc_trigger_match_HT2", &outMcJet.trigger_match_HT2, "mc_trigger_match_HT2/O");
@@ -229,11 +229,10 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
    MatchedTree->Branch("reco_neutral_fraction", &outRecoJet.neutral_fraction, "reco_neutral_fraction/D");
    MatchedTree->Branch("reco_trigger_match_JP2", &outRecoJet.trigger_match_JP2, "reco_trigger_match_JP2/O");
    MatchedTree->Branch("reco_n_constituents", &outRecoJet.n_constituents, "reco_n_constituents/I");
-   // MatchedTree->Branch("reco_event_id", &outRecoJet.vz, "reco_event_id/D");
    MatchedTree->Branch("reco_weight", &outRecoJet.weight, "reco_weight/D");
    MatchedTree->Branch("reco_multiplicity", &outRecoJet.multiplicity, "reco_multiplicity/D");
    MatchedTree->Branch("reco_trigger_match_HT2", &outRecoJet.trigger_match_HT2, "reco_trigger_match_HT2/O");
-
+   MatchedTree->Branch("isTriggerEvent", &isTriggerEvent, "isTriggerEvent/O");
    MatchedTree->Branch("deltaR", &deltaR, "deltaR/D");
 
    int nEvents = McChain->GetEntries();
@@ -247,14 +246,6 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
    {
       McChain->GetEntry(iEvent);
 
-      int recoEvent = RecoChain->GetEntryNumberWithIndex(mc.runid, mc.eventid);
-
-      if (recoEvent < 0) { // no reco event found event did not trigger
-         continue;
-      }
-
-      // if (abs(mc.vz) > 30) // skip bad events with high weights
-      //   continue;
       if (accepted_events_list.count(mc.event_sum_pt) > 0)
          continue; // some events have identical total particle pT
       else
@@ -263,17 +254,20 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
       vector<MyJet> mcJets;
       for (int j = 0; j < mc.njets; ++j) {
          TStarJetVectorJet *tempMcJet = dynamic_cast<TStarJetVectorJet *>(mc.jets->At(j));
+         if (abs(tempMcJet->Eta()) > EtaCut)
+            continue;
 
          mcJets.push_back(MyJet(*tempMcJet, tempMcJet->Pt(), mc.ptLead[j], tempMcJet->Eta(), tempMcJet->Phi(),
                                 tempMcJet->Rapidity(), mc.neutral_fraction[j], mc.trigger_match_JP2[j],
-                                mc.n_constituents[j], mc.eventid, mc.weight, mc.mult, mc.trigger_match_HT2[j], mc.vz));
+                                mc.n_constituents[j], mc.eventid, mc.weight, mc.mult, mc.trigger_match_HT2[j]));
       }
 
+      int recoEvent = RecoChain->GetEntryNumberWithIndex(mc.runid, mc.eventid);
       vector<MyJet> recoJets;
+
       if (recoEvent >= 0) {
          RecoChain->GetEntry(recoEvent);
-         // if (abs(reco.vz) > 30)
-         //   continue; // go to next event
+         isTriggerEvent = reco.isTriggerEvent;
          for (int j = 0; j < reco.njets; ++j) {
             TStarJetVectorJet *tempRecoJet = (TStarJetVectorJet *)reco.jets->At(j);
             if (abs(tempRecoJet->Eta()) > EtaCut)
@@ -281,9 +275,9 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
             recoJets.push_back(MyJet(*tempRecoJet, tempRecoJet->Pt(), reco.ptLead[j], tempRecoJet->Eta(),
                                      tempRecoJet->Phi(), tempRecoJet->Rapidity(), reco.neutral_fraction[j],
                                      reco.trigger_match_JP2[j], reco.n_constituents[j], reco.eventid, reco.weight,
-                                     reco.mult, reco.trigger_match_HT2[j], reco.vz));
+                                     reco.mult, reco.trigger_match_HT2[j]));
          }
-      } // end of recojet loop
+      } // end of recojet loop}
       //======================================================================================================================================
       // Match them
       //======================================================================================================================================
@@ -295,6 +289,9 @@ int matching_mc_reco(TString mcTreeName = "/gpfs01/star/pwg/prozorov/jets_pp_201
          outMcJet = MatchedJets[j].first;
          outRecoJet = MatchedJets[j].second;
          deltaR = outMcJet.deltaR(outRecoJet);
+         if (outMcJet.pt < 0 && outRecoJet.pt > 0) {
+            outMcJet.weight = outRecoJet.weight;
+         }
 
          MatchedTree->Fill();
          // fill histograms and counters
@@ -369,7 +366,7 @@ vector<MatchedJetPair> MatchJetsEtaPhi(const vector<MyJet> &McJets, const vector
             hDeltaR->Fill(deltaR);
          }
 
-         if (deltaR < R && deltaR < minDeltaR) {
+         if (deltaR <= 0.6 * R && deltaR < minDeltaR) {
             minDeltaR = deltaR;
             bestMatch = rcit;
             isMatched = true;

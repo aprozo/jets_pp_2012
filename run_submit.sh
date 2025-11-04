@@ -98,13 +98,17 @@ main() {
     fi
 
     # meanwhile after submitting matching jobs, merge data trees
-    echo ""
-    echo "===========merging data trees==========="
-    for trigger in "${TRIGGERS[@]}"; do
-         merge_trees "$trigger" "data" "merged_data_$trigger"
-    done
-    echo ""
-    echo "===========merging is finished==========="
+
+    if [[ " ${TYPE[*]} " == *" data "* ]]; then
+        echo ""
+        echo "===========merging data trees==========="
+        for trigger in "${TRIGGERS[@]}"; do
+             merge_trees "$trigger" "data" "merged_data_$trigger"
+        done
+        echo ""
+        echo "===========merging is finished==========="
+    fi
+
 
     if [[ " ${TYPE[*]} " == *" embedding "* ]]; then
         ./scripts/condor_control.sh

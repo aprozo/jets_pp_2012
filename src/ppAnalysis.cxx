@@ -285,6 +285,11 @@ bool ppAnalysis::InitChains()
       InitializeReader(pReader, pars.InputName, NEvents, PicoDebugLevel, pars.HadronicCorr);
       if (pars.intype == MCPICO) {
          TurnOffCuts(pReader);
+         pars.MaxJetNEF = 1.0;
+         pars.sDCAxyCut = 99999;
+         pars.PtConsMin = 0.0;
+         pars.PtConsMax = 99999.0;
+         pars.FakeEff = 0;
       }
 
       // initialize qa histograms
@@ -344,16 +349,16 @@ EVENTRESULT ppAnalysis::RunEvent()
    else if (pars.TriggerName.Contains("MB"))
       current_trigger = "MB";
 
+   isTriggerEvent = false;
    if (pars.intype == INPICO) {
-      bool has_trigger = false;
       for (auto trig_id : trigger_map_2012[current_trigger]) {
          if (event_triggers.count(trig_id) != 0) {
-            has_trigger = true;
+            isTriggerEvent = true;
             break;
          }
       }
-      if (!has_trigger)
-         return EVENTRESULT::NOTACCEPTED;
+      // if (!has_trigger)
+      //    return EVENTRESULT::NOTACCEPTED;
    }
 
    vector<TStarJetPicoTriggerInfo *> triggers;
@@ -381,24 +386,22 @@ EVENTRESULT ppAnalysis::RunEvent()
             break;
          }
       }
-      if (is_bad_tower)
-         continue; // skip triggers from bad towers
+      // if (is_bad_tower)
+      // continue; // skip triggers from bad towers
       triggers.push_back(trig);
    }
 
-   if (HT2_trigger_ids.size() > 0 &&
-       count_bad_tower_triggers == HT2_trigger_ids.size()) { // all HT2 triggers are caused by bad towers
-      return EVENTRESULT::NOTACCEPTED;
-   }
-
-   // exclude
+   // if (HT2_trigger_ids.size() > 0 &&
+   //     count_bad_tower_triggers == HT2_trigger_ids.size()) { // all HT2 triggers are caused by bad towers
+   //    return EVENTRESULT::NOTACCEPTED;
+   // }
 
    for (auto trig : triggers) {
 
       if (trig->isJP2() || trig->isJP1() || trig->isJP0()) {
          // don't do anything if eta and phi are not 0
-         // if (trig->GetEta() != 0 && trig->GetPhi() != 0)
-         //    continue;
+         if (trig->GetEta() != 0 && trig->GetPhi() != 0)
+            continue;
          float eta, phi;
          if (getBarrelJetPatchEtaPhi(trig->GetId(), eta, phi)) {
             trig->SetEta(eta);
@@ -454,7 +457,7 @@ EVENTRESULT ppAnalysis::RunEvent()
       int trackid = sv->GetTrackID();
       int container_id = sv->GetTowerID();
 
-      if (trackid < 0) { // it means it is a track -  not tower
+      if (trackid < 0 && pars.intype == INPICO) { // it means it is a track -  not tower
          TStarJetPicoPrimaryTrack *track = (TStarJetPicoPrimaryTrack *)tracksList->At(i);
          container_id = i;
          float sDCAxy = track->GetsDCAxy();
@@ -596,27 +599,24 @@ EVENTRESULT ppAnalysis::RunEvent()
       if (pars.MaxJetNEF < 1.0 && (jetptne / jetpttot) > pars.MaxJetNEF)
          continue;
 
-      if (charged_constituents.size() == 0)
-         continue; // skip jets with no charged constituents
+      // auto leadingTrack = charged_constituents.at(0);
+      // if (jetpttot > 22)
+      //    QA_hist.highjetpt_leadingtrack_pt->Fill(leadingTrack.perp());
 
-      auto leadingTrack = charged_constituents.at(0);
-      if (jetpttot > 22)
-         QA_hist.highjetpt_leadingtrack_pt->Fill(leadingTrack.perp());
+      // if (charged_constituents.size() == 1) {
+      //    int container_id = leadingTrack.user_info<JetAnalysisUserInfo>().GetNumber();
+      //    TStarJetPicoPrimaryTrack *track = (TStarJetPicoPrimaryTrack *)tracksList->At(container_id);
+      //    QA_hist.FillTrack(track);
+      // }
 
-      if (charged_constituents.size() == 1) {
-         int container_id = leadingTrack.user_info<JetAnalysisUserInfo>().GetNumber();
-         TStarJetPicoPrimaryTrack *track = (TStarJetPicoPrimaryTrack *)tracksList->At(container_id);
-         QA_hist.FillTrack(track);
-      }
-
-      if (neutral_constituents.size() > 0) {
-         auto leadingTower = neutral_constituents.at(0);
-         int towerId = leadingTower.user_info<JetAnalysisUserInfo>().GetNumber();
-         QA_hist.jetpt_TowerID->Fill(leadingTower.perp(), towerId);
-         if (jetpttot > 22.0)
-            // Fill QA histograms only for high pt jets
-            QA_hist.highjetpt_leadingtower_pt->Fill(leadingTower.perp());
-      }
+      // if (neutral_constituents.size() > 0) {
+      //    auto leadingTower = neutral_constituents.at(0);
+      //    int towerId = leadingTower.user_info<JetAnalysisUserInfo>().GetNumber();
+      //    QA_hist.jetpt_TowerID->Fill(leadingTower.perp(), towerId);
+      //    if (jetpttot > 22.0)
+      //       // Fill QA histograms only for high pt jets
+      //       QA_hist.highjetpt_leadingtower_pt->Fill(leadingTower.perp());
+      // }
 
       CurrentJet.set_user_info(userinfo);
       Result.push_back(ResultStruct(CurrentJet));
@@ -665,16 +665,16 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pa
    // Additional cuts
    evCuts->SetVertexZCut(pars.VzCut);
    evCuts->SetRefMultCut(pars.RefMultCut);
-   evCuts->SetVertexZDiffCut(pars.VzDiffCut);
+   // evCuts->SetVertexZDiffCut(pars.VzDiffCut);
    evCuts->SetMaxEventPtCut(pars.MaxEventPtCut);
    evCuts->SetMaxEventEtCut(pars.MaxEventEtCut);
 
-   evCuts->SetMinEventEtCut(pars.MinEventEtCut);
+   // evCuts->SetMinEventEtCut(pars.MinEventEtCut);
 
    std::cout << "Using these event cuts:" << std::endl;
    std::cout << " Vz: " << evCuts->GetVertexZCut() << std::endl;
    std::cout << " Refmult: " << evCuts->GetRefMultCutMin() << " -- " << evCuts->GetRefMultCutMax() << std::endl;
-   std::cout << " Delta Vz:  " << evCuts->GetVertexZDiffCut() << std::endl;
+   // std::cout << " Delta Vz:  " << evCuts->GetVertexZDiffCut() << std::endl;
    std::cout << " MaxEventPt:  " << evCuts->GetMaxEventPtCut() << std::endl;
    std::cout << " MaxEventEt:  " << evCuts->GetMaxEventEtCut() << std::endl;
 
@@ -765,6 +765,20 @@ double getPythiaWeight(TString filename)
    }
    return -1;
 }
+// bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R)
+// {
+//    for (auto trigger : triggers) {
+//       if (!trigger->isJP2())
+//          continue;
+//       float eta = trigger->GetEta();
+//       float phi = trigger->GetPhi();
+//       float deta = jet.eta() - eta;
+//       float dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
+//       if (sqrt(deta * deta + dphi * dphi) < R)
+//          return true;
+//    }
+//    return false;
+// }
 
 bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R)
 {
