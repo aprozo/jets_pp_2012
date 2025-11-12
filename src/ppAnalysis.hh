@@ -211,6 +211,7 @@ private:
    double refmult;
    double weight;
    int njets;
+   bool isTriggerEvent;
 
    JetAnalyzer *pJA = 0;
 
@@ -262,6 +263,8 @@ public:
 
    /// Get the eventid of the current event
    inline double GetEventid() { return eventid; };
+
+   inline bool IsTriggerEvent() { return isTriggerEvent; };
 
    inline float GetEventSumPt() { return event_sum_pt; };
 

@@ -78,9 +78,9 @@ public:
    // in older data (no VPD)
    double VzDiffCut = 99999; ///< |Vz(TPC) - Vz(VPD)|
 
-   double DcaCut = 1.0;               ///< track dca || was 3.0
+   double DcaCut = 1.5;               ///< track dca || was 3.0
    double sDCAxyCut = 0.5;            ///< signed dca_xy
-   double NMinFit = 20;               ///< minimum number of fit points for tracks || was 15
+   double NMinFit = 15;               ///< minimum number of fit points for tracks || was 15
    double FitOverMaxPointsCut = 0.52; ///< NFit / NFitPossible || was 0.52
 
    double HadronicCorr = 0.9999; ///< Fraction of hadronic correction

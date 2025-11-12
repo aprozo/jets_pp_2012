@@ -107,6 +107,8 @@ int main(int argc, const char **argv)
    ResultTree->Branch("runid1", &runid1, "runid1/I");
    int eventid;
    ResultTree->Branch("eventid", &eventid, "eventid/I");
+   bool isTriggerEvent;
+   ResultTree->Branch("isTriggerEvent", &isTriggerEvent, "isTriggerEvent/O");
    double weight;
    ResultTree->Branch("weight", &weight, "weight/D");
    double refmult;
@@ -196,25 +198,23 @@ int main(int argc, const char **argv)
 
          // Now we can pull out details and results
          // ---------------------------------------
+         isTriggerEvent = ppana->IsTriggerEvent();
+         runid = ppana->GetRunid();
+         hEventsRun->Fill(Form("%i", runid1), 1);
 
          weight = ppana->GetEventWeight();
          refmult = ppana->GetRefmult();
-         runid = ppana->GetRunid();
          eventid = ppana->GetEventid();
          mult = ppana->GetEventMult();
          event_sum_pt = ppana->GetEventSumPt();
 
+         // if (pars.InputName.Contains("hat") && pars.intype == INPICO &&
+         //     ret == EVENTRESULT::NOTACCEPTED) { // fill events only for Geant only to account for missed jets
+         //    ResultTree->Fill();
+         //    continue;
+         // }
          vector<ResultStruct> Result = ppana->GetResult();
          njets = Result.size();
-         // fill the bin with the same run name
-         hEventsRun->Fill(Form("%i", runid1), 1);
-
-         if (pars.InputName.Contains("hat") && pars.intype == INPICO &&
-             ret == EVENTRESULT::NOJETS) { // fill events only for Geant only to account for missed jets
-            ResultTree->Fill();
-            continue;
-         }
-
          if (njets == 0)
             continue;
 

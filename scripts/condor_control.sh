@@ -53,11 +53,10 @@ check_jobs() {
         if [ "$runningJobs" != "0" ]; then
             runningTime=$((runningTime + sleepTime)) # Increment runningTime by 10 seconds
         fi
-        # output percentage of time passed
-        echo "Percentage of time passed: $((runningTime * 100 / runningTimeLimit))%"
-        echo "Percentage of jobs done: $((100 - leftJobs * 100 / totalJobs))%"
         runningTimeHours=$((runningTime / 3600))
-        echo "Total running time: $runningTimeHours hours"
+        runningTimeMinutes=$(((runningTime % 3600) / 60))
+        runningTimeSeconds=$((runningTime % 60))
+        echo "Running time: ${runningTimeHours}h ${runningTimeMinutes}min ${runningTimeSeconds}s - $((runningTime * 100 / runningTimeLimit))%"
         echo " "
         sleep $sleepTime
     fi
