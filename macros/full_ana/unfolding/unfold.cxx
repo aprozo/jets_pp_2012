@@ -2,6 +2,8 @@
 #include "RooUnfoldResponse.h"
 #include "RooUnfoldSvd.h"
 
+#include <ROOT/RDataFrame.hxx>
+
 #include "TCanvas.h"
 #include "TColor.h"
 #include "TEntryList.h"
@@ -72,7 +74,7 @@ TH2D *remakeMatrix(TH2D *hist, TString xTitle, TString yTitle) {
     new_y_axis = pt_mc_bins;
 
   // assert the number of bins to existing pt_bins
-  if (new_x_axis.size() != hist->GetNbinsX() - 1) {
+  if (new_x_axis.size() != hist->GetNbinsX() + 1) {
     cout << "Error: x axis size mismatch" << endl;
     cout << "Expected: " << new_x_axis.size() << endl;
     cout << " Got: " << hist->GetNbinsX() + 1 << endl;
@@ -80,7 +82,7 @@ TH2D *remakeMatrix(TH2D *hist, TString xTitle, TString yTitle) {
     cout << "xTitle: " << xTitle << endl;
     cout << "yTitle: " << yTitle << endl;
   }
-  if (new_y_axis.size() != hist->GetNbinsY() - 1) {
+  if (new_y_axis.size() != hist->GetNbinsY() + 1) {
     cout << "Error: y axis size mismatch" << endl;
     cout << "Expected: " << new_y_axis.size() << endl;
     cout << " Got: " << hist->GetNbinsY() + 1 << endl;
@@ -183,8 +185,6 @@ void plotIterations(TCanvas *can, TString outPdf, RooUnfoldResponse *response,
   TH2D *hUnfoldingMatrix = new TH2D(lastUnfolding.UnfoldingMatrix());
   hUnfoldingMatrix->SetTitle("Bin Migration probability");
   hUnfoldingMatrix->SetName("UnfoldingMatrix");
-  cout << "x bins size" << hUnfoldingMatrix->GetXaxis()->GetNbins() << endl;
-  cout << "y bins size" << hUnfoldingMatrix->GetYaxis()->GetNbins() << endl;
 
   can->cd();
   hUnfoldingMatrix = remakeMatrix(hUnfoldingMatrix, "reco", "mc");
@@ -231,6 +231,8 @@ void plotIterations(TCanvas *can, TString outPdf, RooUnfoldResponse *response,
 void unfold(TString inputFile = "/home/prozorov/dev/star/jets_pp_2012/"
                                 "output/merged_matching_JP2_R0.2.root") {
 
+  ROOT::EnableImplicitMT();
+
   TString trigger = "";
   if (inputFile.Contains("HT2"))
     trigger = "HT2";
@@ -261,101 +263,74 @@ void unfold(TString inputFile = "/home/prozorov/dev/star/jets_pp_2012/"
   gStyle->SetPaintTextFormat(".2f");
   ///////////////////////////////////////////////////////////////////////////
   const float testFraction = 0.2;
-
-  TH1D *hMeasured;
-  TH1D *hTruth;
-  TH1D *hMeasuredTest;
-  TH1D *hTruthTest;
-  TH2D *hResponseMatrix;
-  TH2D *detectorResolution;
-
-  RooUnfoldResponse *response;
-
   TString outFileName = Form("response_%s_R%.1f.root", trigger.Data(), Radius);
   TFile *responseFile = new TFile(outFileName, "RECREATE");
 
-  hResponseMatrix =
-      new TH2D("hResponseMatrix", "; Measured; Truth", pt_reco_bins.size() - 1,
-               pt_reco_bins.data(), pt_mc_bins.size() - 1, pt_mc_bins.data());
+  // Create RDataFrame
+  TString treeName = "MatchedTree";
+  ROOT::RDataFrame allJets(treeName, inputFile);
 
-  hMeasured = new TH1D("Measured", ";p_{t}, GeV/c; dN/dp_{t}",
-                       pt_reco_bins.size() - 1, pt_reco_bins.data());
-  hTruth = new TH1D("Truth", ";p_{t}, GeV/c;dN/dp_{t}", pt_mc_bins.size() - 1,
-                    pt_mc_bins.data());
+  // Filter for matched jets and define helper columns
+  auto matchedJets =
+      allJets.Filter("mc_pt > 0 && reco_pt > 0", "matched jets")
+          .Define("deltaPt", "reco_pt - mc_pt")
+          .Define("JES", "deltaPt / mc_pt")
+          .DefineSlot("randNum",
+                      [](unsigned int slot) { return gRandom->Uniform(); }, {});
 
-  hMeasuredTest = (TH1D *)hMeasured->Clone("MeasuredTest");
-  hTruthTest = (TH1D *)hTruth->Clone("TruthTest");
+  // Split into training and test sets
+  auto trainSet =
+      matchedJets.Filter(Form("randNum > %f", testFraction), "training set");
+  auto testSet =
+      matchedJets.Filter(Form("randNum <= %f", testFraction), "test set");
 
-  detectorResolution = new TH2D("detectorResolution",
-                                "Detector Resolution; p_{T}^{mc}, GeV/c; "
-                                "p_{T}^{reco} - p_{T}^{mc}, GeV/c",
-                                1000, 0, 100, 1000, -100, 100);
+  // Fill training histograms using Histo1D and Histo2D
+  auto hMeasured =
+      trainSet.Histo1D({"Measured", ";p_{t}, GeV/c; dN/dp_{t}",
+                        (int)(pt_reco_bins.size() - 1), pt_reco_bins.data()},
+                       "reco_pt", "mc_weight");
 
-  TFile *treeFile = new TFile(inputFile, "READ");
-  if (!treeFile || treeFile->IsZombie()) {
-    cout << "Error: cannot open jets_embedding.root" << endl;
-    return;
-  }
+  auto hTruth =
+      trainSet.Histo1D({"Truth", ";p_{t}, GeV/c;dN/dp_{t}",
+                        (int)(pt_mc_bins.size() - 1), pt_mc_bins.data()},
+                       "mc_pt", "mc_weight");
 
-  double pt_mc;
-  double pt_reco;
-  double weight;
-  bool reco_trigger_match_HT2;
-  bool reco_trigger_match_JP2;
-  bool isTriggerEvent;
+  auto hResponseMatrix = trainSet.Histo2D(
+      {"hResponseMatrix", "; Measured; Truth", (int)(pt_reco_bins.size() - 1),
+       pt_reco_bins.data(), (int)(pt_mc_bins.size() - 1), pt_mc_bins.data()},
+      "reco_pt", "mc_pt", "mc_weight");
 
-  TTree *matchedTree = (TTree *)treeFile->Get("MatchedTree");
-  matchedTree->SetBranchAddress("mc_pt", &pt_mc);
-  matchedTree->SetBranchAddress("reco_pt", &pt_reco);
-  matchedTree->SetBranchAddress("mc_weight", &weight);
-  matchedTree->SetBranchAddress("reco_trigger_match_HT2",
-                                &reco_trigger_match_HT2);
-  matchedTree->SetBranchAddress("reco_trigger_match_JP2",
-                                &reco_trigger_match_JP2);
-  matchedTree->SetBranchAddress("isTriggerEvent", &isTriggerEvent);
+  // Fill test histograms
+  auto hMeasuredTest =
+      testSet.Histo1D({"MeasuredTest", ";p_{t}, GeV/c; dN/dp_{t}",
+                       (int)(pt_reco_bins.size() - 1), pt_reco_bins.data()},
+                      "reco_pt", "mc_weight");
 
-  Double_t nEntries = matchedTree->GetEntries();
-  TRandom3 rand(0);
+  auto hTruthTest =
+      testSet.Histo1D({"TruthTest", ";p_{t}, GeV/c;dN/dp_{t}",
+                       (int)(pt_mc_bins.size() - 1), pt_mc_bins.data()},
+                      "mc_pt", "mc_weight");
 
-  for (Int_t iEntry = 0; iEntry < nEntries; iEntry++) {
-    Float_t progress = 0.;
-    progress = (Float_t)iEntry / (nEntries);
-    if (iEntry % 10000 == 0) {
-      cout << "Training: \r (" << (progress * 100.0) << "%)" << std::flush;
-    }
-    matchedTree->GetEntry(iEntry);
-    if (pt_mc <= 0 || pt_reco <= 0) // only matched jets
-      continue;
-    // if (!isTriggerEvent)
-    //   continue;
+  // Fill detector resolution
+  auto detectorResolution =
+      matchedJets.Histo2D({"detectorResolution",
+                           "Detector Resolution; p_{T}^{mc}, GeV/c; "
+                           "p_{T}^{reco} - p_{T}^{mc}, GeV/c",
+                           1000, 0., 100., 1000, -100., 100.},
+                          "mc_pt", "deltaPt", "mc_weight");
 
-    double deltaPt = pt_reco - pt_mc;
-    detectorResolution->Fill(pt_mc, deltaPt, weight);
-
-    if (rand.Uniform() > testFraction) {
-      hResponseMatrix->Fill(pt_reco, pt_mc, weight);
-      hMeasured->Fill(pt_reco, weight);
-      hTruth->Fill(pt_mc, weight);
-    } else {
-      hTruthTest->Fill(pt_mc, weight);
-      hMeasuredTest->Fill(pt_reco, weight);
-    }
-
-  } // end of loop over train entries
-
-  response = new RooUnfoldResponse(hMeasured, hTruth, hResponseMatrix);
-  // response->UseOverflow();
+  // Create RooUnfoldResponse (note: GetPtr() to get raw pointer)
+  auto response = new RooUnfoldResponse(hMeasured.GetPtr(), hTruth.GetPtr(),
+                                        hResponseMatrix.GetPtr());
   response->SetName("my_response");
 
+  // Fit slices and calculate stdDev
   detectorResolution->FitSlicesY(0, 0, -1, 10, "QNR G2");
-
-  TH1D *hMean = (TH1D *)gDirectory->Get("detectorResolution_1");
-  TH1D *hSigma = (TH1D *)gDirectory->Get("detectorResolution_2");
-
-  TH1D *stdDev =
+  auto hMean = (TH1D *)gDirectory->Get("detectorResolution_1");
+  auto hSigma = (TH1D *)gDirectory->Get("detectorResolution_2");
+  auto stdDev =
       new TH1D("stdDev", "stdDev", hMean->GetNbinsX(),
                hMean->GetXaxis()->GetXmin(), hMean->GetXaxis()->GetXmax());
-
   for (int i = 1; i <= detectorResolution->GetNbinsX(); i++) {
     TH1D *slice = detectorResolution->ProjectionY("slice", i, i);
     stdDev->SetBinContent(i, slice->GetStdDev());
@@ -380,7 +355,8 @@ void unfold(TString inputFile = "/home/prozorov/dev/star/jets_pp_2012/"
   TString outPdf =
       Form("pdf/closure_check_%s_R%.1f.pdf", trigger.Data(), Radius);
   can->SaveAs(outPdf + "[");
-  plotIterations(can, outPdf, response, hTruthTest, hMeasuredTest);
+  plotIterations(can, outPdf, response, hTruthTest.GetPtr(),
+                 hMeasuredTest.GetPtr());
   can->SaveAs(outPdf + "]");
   responseFile->Close();
 }
