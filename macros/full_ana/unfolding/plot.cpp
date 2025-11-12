@@ -37,13 +37,13 @@ void AddSTARLabels(TPad *pad, const TString &additionalText = "") {
   // Raw label
   latex->SetTextFont(42);
   latex->SetTextSize(0.07);
-  latex->DrawLatex(0.45, 0.7, "#bf{STAR} #it{Raw data}");
+  latex->DrawLatex(0.45, 0.7, "#bf{STAR} #it{Pythia 6 + GEANT}");
 
   // Collision system
   latex->SetTextFont(42);
   latex->SetTextSize(0.05);
   latex->SetTextAlign(11);
-  latex->DrawLatex(0.45, 0.85, "p+p #sqrt{s} = 200 GeV (year 2012)");
+  latex->DrawLatex(0.45, 0.85, "#it{p+p} #sqrt{s} = 200 GeV (year 2012)");
 
   // Additional text if provided
 
@@ -179,7 +179,9 @@ void PlotUnfoldedComparison(TString responseFile,
   }
 
   leg->Draw();
-  AddSTARLabels(pad1, Form("Anti-k_{T}, R = %s", R.c_str()));
+
+  AddSTARLabels(pad1,
+                Form("Anti-k_{T}, #it{R} = %s, |#eta| < 1-#it{R}", R.c_str()));
 
   // Lower pad: Ratio
   pad2->cd();
@@ -246,7 +248,8 @@ void PlotUnfoldedComparison(TString responseFile,
 
     hResponse->Draw("COLZ");
 
-    AddSTARLabels((TPad *)c2, Form("Anti-k_{T}, R = %s", R.c_str()));
+    AddSTARLabels((TPad *)c2, Form("Anti-k_{T}, #it{R} = %s, |#eta| < 1-#it{R}",
+                                   R.c_str()));
 
     c2->SaveAs(outPdf);
   }
@@ -272,7 +275,9 @@ void PlotUnfoldedComparison(TString responseFile,
     hMean->SetMarkerStyle(20);
     hMean->SetLineWidth(2);
     hMean->Draw("PE");
-    AddSTARLabels((TPad *)gPad, Form("Anti-k_{T}, R = %s", R.c_str()));
+    AddSTARLabels(
+        (TPad *)gPad,
+        Form("Anti-k_{T}, #it{R} = %s, |#eta| < 1-#it{R}", R.c_str()));
 
     c3->cd(2);
     gPad->SetRightMargin(0.045);

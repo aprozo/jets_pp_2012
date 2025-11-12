@@ -35,17 +35,17 @@ void AddSTARLabels(TPad *pad, const TString &additionalText = "") {
   // Raw label
   latex->SetTextFont(42);
   latex->SetTextSize(0.07);
-  latex->DrawLatex(0.2, 0.2, "#bf{STAR} #it{Raw data}");
+  latex->DrawLatex(0.2, 0.2, "#bf{STAR} #it{Pythia 6 + GEANT}");
 
   // Collision system
   latex->SetTextFont(42);
   latex->SetTextSize(0.05);
   latex->SetTextAlign(11);
-  latex->DrawLatex(0.45, 0.9, "p+p #sqrt{s} = 200 GeV (year 2012)");
+  latex->DrawLatex(0.45, 0.85, "#it{p+p} #sqrt{s} = 200 GeV (year 2012)");
 
   // Additional text if provided
 
-  latex->DrawLatex(0.5, 0.85, additionalText.Data());
+  latex->DrawLatex(0.45, 0.78, additionalText.Data());
 }
 // Plot a single trigger efficiency
 void PlotSingleTrigger(const TString &trigger, const TString &jetR,
@@ -131,7 +131,7 @@ void PlotSingleTrigger(const TString &trigger, const TString &jetR,
   h_num->GetYaxis()->SetLabelSize(0.055);
   h_num->GetYaxis()->SetTitleOffset(0.9);
   h_num->GetXaxis()->SetRangeUser(0, max_jet_pt);
-  h_num->GetYaxis()->SetRangeUser(5e-12, 1e-3);
+  h_num->GetYaxis()->SetRangeUser(5e-15, 1e-3);
 
   h_num->GetYaxis()->SetTitle("Normalized counts");
 
@@ -149,7 +149,8 @@ void PlotSingleTrigger(const TString &trigger, const TString &jetR,
   leg1->Draw();
 
   // Add STAR labels
-  AddSTARLabels(pad1, Form("Anti-k_{T}, R = %s", jetR.Data()));
+  AddSTARLabels(
+      pad1, Form("Anti-k_{T}, #it{R} = %s, |#eta| < 1-#it{R}", jetR.Data()));
 
   // ===== Lower pad: Ratio =====
   pad2->cd();

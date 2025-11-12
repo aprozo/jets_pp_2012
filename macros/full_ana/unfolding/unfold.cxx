@@ -17,20 +17,6 @@
 #include "TSystem.h"
 #include "TTree.h"
 
-// const vector<double> pt_reco_bins =
-// {6.9,  8.2,  9.7,  11.5, 13.6, 16.1, 19.0,
-//                                      22.5, 26.6, 31.4, 37.2, 44.0, 52.0, 70.0};
-// #pt_reco_bins = (
-//        5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0, 13.0, 14.0,
-//        15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0,
-//        25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0, 34.0,
-//        35.0, 36.0, 37.0, 38.0, 39.0, 40.0, 42.0, 44.0, 46.0, 48.0,
-//        50.0, 52.0, 54.0, 56.0, 58.0, 60.0, 64.0, 70.0, 90.0
-//       )
-
-// # #pt_reco_bins =
-//   [6.9,  8.2,  9.7,  11.5,13.6, 16.1, 19.0, 22.5, 26.6,31.4, 37.2, 44.0, 52.0]
-
 const vector<double> pt_reco_bins = {
     5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0, 13.0, 14.0,
     15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0,
@@ -38,7 +24,7 @@ const vector<double> pt_reco_bins = {
     35.0, 36.0, 37.0, 38.0, 39.0, 40.0, 42.0, 44.0, 46.0, 48.0,
     50.0, 52.0, 54.0, 56.0, 58.0, 60.0, 68.0, 80.0, 90.0};
 
-const vector<double> pt_mc_bins = {4.0,  6.9,  8.2,  9.7,  11.5,
+const vector<double> pt_mc_bins = {5.0,  6.9,  8.2,  9.7,  11.5,
                                    13.6, 16.1, 19.0, 22.5, 26.6,
                                    31.4, 37.2, 44.0, 52.0, 80.0};
 
@@ -245,7 +231,6 @@ void plotIterations(TCanvas *can, TString outPdf, RooUnfoldResponse *response,
 void unfold(TString inputFile = "/home/prozorov/dev/star/jets_pp_2012/"
                                 "output/merged_matching_JP2_R0.2.root") {
 
-  // get trigger from filename
   TString trigger = "";
   if (inputFile.Contains("HT2"))
     trigger = "HT2";
@@ -258,7 +243,6 @@ void unfold(TString inputFile = "/home/prozorov/dev/star/jets_pp_2012/"
 
   // get Radius from filename
   float Radius = 0;
-  // get Radius from input filename if it contains *Rx.x.root
   if (inputFile.Contains("R0.2"))
     Radius = 0.2;
   else if (inputFile.Contains("R0.3"))
@@ -284,154 +268,121 @@ void unfold(TString inputFile = "/home/prozorov/dev/star/jets_pp_2012/"
   TH1D *hTruthTest;
   TH2D *hResponseMatrix;
   TH2D *detectorResolution;
-  // Create RooUnfoldResponse object
+
   RooUnfoldResponse *response;
 
   TString outFileName = Form("response_%s_R%.1f.root", trigger.Data(), Radius);
+  TFile *responseFile = new TFile(outFileName, "RECREATE");
 
-  bool isTraining = true;
+  hResponseMatrix =
+      new TH2D("hResponseMatrix", "; Measured; Truth", pt_reco_bins.size() - 1,
+               pt_reco_bins.data(), pt_mc_bins.size() - 1, pt_mc_bins.data());
 
-  TFile *responseFile;
+  hMeasured = new TH1D("Measured", ";p_{t}, GeV/c; dN/dp_{t}",
+                       pt_reco_bins.size() - 1, pt_reco_bins.data());
+  hTruth = new TH1D("Truth", ";p_{t}, GeV/c;dN/dp_{t}", pt_mc_bins.size() - 1,
+                    pt_mc_bins.data());
 
-  // check if file "response.root" exists
-  if (isTraining) {
-    responseFile = new TFile(outFileName, "RECREATE");
-    // response = new RooUnfoldResponse(nBinsMeasured, measured_pt_min,
-    // measured_pt_max, nBinsTruth, truth_pt_min, truth_pt_max);
-    // hResponseMatrix = new TH2D("hResponseMatrix", "Response Matrix;
-    // Measured; Truth", nBinsMeasured, measured_pt_min, measured_pt_max,
-    // nBinsTruth, truth_pt_min, truth_pt_max); hMeasured = new
-    // TH1D("Measured", ";p_{t}, GeV/c;", nBinsMeasured, measured_pt_min,
-    // measured_pt_max); hTruth = new TH1D("Truth", ";p_{t}, GeV/c;",
-    // nBinsTruth, truth_pt_min, truth_pt_max);
-    hResponseMatrix =
-        new TH2D("hResponseMatrix", "Response Matrix; Measured; Truth",
-                 pt_reco_bins.size() - 1, pt_reco_bins.data(),
-                 pt_mc_bins.size() - 1, pt_mc_bins.data());
+  hMeasuredTest = (TH1D *)hMeasured->Clone("MeasuredTest");
+  hTruthTest = (TH1D *)hTruth->Clone("TruthTest");
 
-    hMeasured = new TH1D("Measured", ";p_{t}, GeV/c; dN/dp_{t}",
-                         pt_reco_bins.size() - 1, pt_reco_bins.data());
-    hMeasuredTest = (TH1D *)hMeasured->Clone("MeasuredTest");
+  detectorResolution = new TH2D("detectorResolution",
+                                "Detector Resolution; p_{T}^{mc}, GeV/c; "
+                                "p_{T}^{reco} - p_{T}^{mc}, GeV/c",
+                                1000, 0, 100, 1000, -100, 100);
 
-    hTruth = new TH1D("Truth", ";p_{t}, GeV/c;dN/dp_{t}", pt_mc_bins.size() - 1,
-                      pt_mc_bins.data());
-
-    hTruthTest = (TH1D *)hTruth->Clone("TruthTest");
-
-    detectorResolution = new TH2D("detectorResolution",
-                                  "Detector Resolution; p_{T}^{mc}, GeV/c; "
-                                  "p_{T}^{reco} - p_{T}^{mc}, GeV/c",
-                                  1000, 0, 100, 1000, -100, 100);
-    // response = new RooUnfoldResponse("my_response", "my_response");
-
-    // response->Setup(hMeasured, hTruth);
-    // response = new RooUnfoldResponse(nBinsMeasured, measured_pt_min,
-    // measured_pt_max, nBinsTruth, truth_pt_min, truth_pt_max);
-
-    TFile *treeFile = new TFile(inputFile, "READ");
-    if (!treeFile || treeFile->IsZombie()) {
-      cout << "Error: cannot open jets_embedding.root" << endl;
-      return;
-    }
-
-    double pt_mc;
-    double pt_reco;
-    double weight;
-
-    bool reco_trigger_match_HT2;
-    bool reco_trigger_match_JP2;
-
-    TTree *matchedTree = (TTree *)treeFile->Get("MatchedTree");
-    matchedTree->SetBranchAddress("mc_pt", &pt_mc);
-    matchedTree->SetBranchAddress("reco_pt", &pt_reco);
-    matchedTree->SetBranchAddress("mc_weight", &weight);
-    matchedTree->SetBranchAddress("reco_trigger_match_HT2",
-                                  &reco_trigger_match_HT2);
-    matchedTree->SetBranchAddress("reco_trigger_match_JP2",
-                                  &reco_trigger_match_JP2);
-
-    Double_t nEntries = matchedTree->GetEntries();
-    TRandom3 rand(0);
-
-    for (Int_t iEntry = 0; iEntry < nEntries; iEntry++) {
-      Float_t progress = 0.;
-      progress = (Float_t)iEntry / (nEntries);
-      if (iEntry % 10000 == 0) {
-        cout << "Training: \r (" << (progress * 100.0) << "%)" << std::flush;
-      }
-      matchedTree->GetEntry(iEntry);
-      if (pt_mc <= 0 || pt_reco <= 0)
-        continue;
-
-      double deltaPt = pt_reco - pt_mc;
-      detectorResolution->Fill(pt_mc, deltaPt, weight);
-
-      if (rand.Uniform() > testFraction) {
-        // response->Fill(pt_reco, pt_mc, weight);
-        hResponseMatrix->Fill(pt_reco, pt_mc, weight);
-        hMeasured->Fill(pt_reco, weight);
-        hTruth->Fill(pt_mc, weight);
-      } else {
-        hTruthTest->Fill(pt_mc, weight);
-        hMeasuredTest->Fill(pt_reco, weight);
-      }
-
-    } // end of loop over train entries
-    response = new RooUnfoldResponse(hMeasured, hTruth, hResponseMatrix);
-    // response->UseOverflow();
-    response->SetName("my_response");
-
-    detectorResolution->FitSlicesY(0, 0, -1, 10, "QNR G2");
-
-    TH1D *hMean = (TH1D *)gDirectory->Get("detectorResolution_1");
-    TH1D *hSigma = (TH1D *)gDirectory->Get("detectorResolution_2");
-
-    TH1D *stdDev =
-        new TH1D("stdDev", "stdDev", hMean->GetNbinsX(),
-                 hMean->GetXaxis()->GetXmin(), hMean->GetXaxis()->GetXmax());
-
-    for (int i = 1; i <= detectorResolution->GetNbinsX(); i++) {
-      TH1D *slice = detectorResolution->ProjectionY("slice", i, i);
-      stdDev->SetBinContent(i, slice->GetStdDev());
-    }
-
-    responseFile->cd();
-    detectorResolution->Write();
-    hMean->Write();
-    hSigma->Write();
-    stdDev->Write();
-
-    hMeasured->Write();
-    hTruth->Write();
-    hMeasuredTest->Write();
-    hTruthTest->Write();
-    hResponseMatrix->Write();
-    response->Write();
-
-    responseFile->Save();
-  } else {
-    responseFile = new TFile(outFileName, "READ");
-    response = (RooUnfoldResponse *)responseFile->Get("my_response");
-    hMeasured = (TH1D *)responseFile->Get("Measured");
-    hTruth = (TH1D *)responseFile->Get("Truth");
-    hMeasuredTest = (TH1D *)responseFile->Get("MeasuredTest");
-    hTruthTest = (TH1D *)responseFile->Get("TruthTest");
-    hResponseMatrix = (TH2D *)responseFile->Get("hResponseMatrix");
+  TFile *treeFile = new TFile(inputFile, "READ");
+  if (!treeFile || treeFile->IsZombie()) {
+    cout << "Error: cannot open jets_embedding.root" << endl;
+    return;
   }
 
-  // ========================================================================================================
+  double pt_mc;
+  double pt_reco;
+  double weight;
+  bool reco_trigger_match_HT2;
+  bool reco_trigger_match_JP2;
+  bool isTriggerEvent;
+
+  TTree *matchedTree = (TTree *)treeFile->Get("MatchedTree");
+  matchedTree->SetBranchAddress("mc_pt", &pt_mc);
+  matchedTree->SetBranchAddress("reco_pt", &pt_reco);
+  matchedTree->SetBranchAddress("mc_weight", &weight);
+  matchedTree->SetBranchAddress("reco_trigger_match_HT2",
+                                &reco_trigger_match_HT2);
+  matchedTree->SetBranchAddress("reco_trigger_match_JP2",
+                                &reco_trigger_match_JP2);
+  matchedTree->SetBranchAddress("isTriggerEvent", &isTriggerEvent);
+
+  Double_t nEntries = matchedTree->GetEntries();
+  TRandom3 rand(0);
+
+  for (Int_t iEntry = 0; iEntry < nEntries; iEntry++) {
+    Float_t progress = 0.;
+    progress = (Float_t)iEntry / (nEntries);
+    if (iEntry % 10000 == 0) {
+      cout << "Training: \r (" << (progress * 100.0) << "%)" << std::flush;
+    }
+    matchedTree->GetEntry(iEntry);
+    if (pt_mc <= 0 || pt_reco <= 0) // only matched jets
+      continue;
+    // if (!isTriggerEvent)
+    //   continue;
+
+    double deltaPt = pt_reco - pt_mc;
+    detectorResolution->Fill(pt_mc, deltaPt, weight);
+
+    if (rand.Uniform() > testFraction) {
+      hResponseMatrix->Fill(pt_reco, pt_mc, weight);
+      hMeasured->Fill(pt_reco, weight);
+      hTruth->Fill(pt_mc, weight);
+    } else {
+      hTruthTest->Fill(pt_mc, weight);
+      hMeasuredTest->Fill(pt_reco, weight);
+    }
+
+  } // end of loop over train entries
+
+  response = new RooUnfoldResponse(hMeasured, hTruth, hResponseMatrix);
+  // response->UseOverflow();
+  response->SetName("my_response");
+
+  detectorResolution->FitSlicesY(0, 0, -1, 10, "QNR G2");
+
+  TH1D *hMean = (TH1D *)gDirectory->Get("detectorResolution_1");
+  TH1D *hSigma = (TH1D *)gDirectory->Get("detectorResolution_2");
+
+  TH1D *stdDev =
+      new TH1D("stdDev", "stdDev", hMean->GetNbinsX(),
+               hMean->GetXaxis()->GetXmin(), hMean->GetXaxis()->GetXmax());
+
+  for (int i = 1; i <= detectorResolution->GetNbinsX(); i++) {
+    TH1D *slice = detectorResolution->ProjectionY("slice", i, i);
+    stdDev->SetBinContent(i, slice->GetStdDev());
+  }
+
+  responseFile->cd();
+  detectorResolution->Write();
+  hMean->Write();
+  hSigma->Write();
+  stdDev->Write();
+
+  hMeasured->Write();
+  hTruth->Write();
+  hMeasuredTest->Write();
+  hTruthTest->Write();
+  hResponseMatrix->Write();
+  response->Write();
+  responseFile->Save();
+
   // Draw closure test check
   TCanvas *can = new TCanvas("can", "Closure Test Check", 1400, 600);
   TString outPdf =
       Form("pdf/closure_check_%s_R%.1f.pdf", trigger.Data(), Radius);
   can->SaveAs(outPdf + "[");
-  // plotIterations(can, outPdf, response, hTruth, hMeasured);
   plotIterations(can, outPdf, response, hTruthTest, hMeasuredTest);
   can->SaveAs(outPdf + "]");
-
   responseFile->Close();
-  delete can;
-  // Save response and test histograms
 }
 
 //==============================================================================

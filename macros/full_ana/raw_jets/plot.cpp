@@ -18,7 +18,7 @@ const std::vector<int> colors = {2000, 2002, 2003, 2004,
 const std::vector<int> markers = {20, 21, 22, 23};
 
 const float max_jet_pt = 80.0;
-
+std::vector<TString> jetRs = {"0.2", "0.3", "0.4", "0.5", "0.6"};
 //// Add STAR publication style labels
 void AddSTARLabels(TPad *pad, const TString &additionalText = "") {
   pad->cd();
@@ -42,7 +42,7 @@ void AddSTARLabels(TPad *pad, const TString &additionalText = "") {
   latex->SetTextFont(42);
   latex->SetTextSize(0.05);
   latex->SetTextAlign(11);
-  latex->DrawLatex(0.45, 0.85, "p+p #sqrt{s} = 200 GeV (year 2012)");
+  latex->DrawLatex(0.45, 0.85, "#it{p+p} #sqrt{s} = 200 GeV (year 2012)");
 
   // Additional text if provided
 
@@ -99,7 +99,7 @@ void plotR(const TString &jetR) {
     hist->GetYaxis()->SetTitleOffset(0.9);
 
     hist->SetStats(0);
-    hist->GetXaxis()->SetTitle("jet p_{T} [GeV/#c]");
+    hist->GetXaxis()->SetTitle("jet p_{T} [GeV/#it{c}]");
     hist->GetXaxis()->SetTitleSize(0.05);
     hist->GetXaxis()->SetLabelSize(0.04);
     hist->GetXaxis()->SetTitleOffset(0.9);
@@ -114,7 +114,8 @@ void plotR(const TString &jetR) {
   // Draw legends and labels
   c->cd();
   leg_ratio->Draw();
-  AddSTARLabels(c, Form("Anti-k_{T}, R = %s", jetR.Data()));
+  AddSTARLabels(
+      c, Form("Anti-k_{T}, #it{R} = %s, |#eta| < 1-#it{R}", jetR.Data()));
 
   c->cd();
   c->SaveAs("dataR" + jetR + ".pdf");
@@ -123,7 +124,7 @@ void plotR(const TString &jetR) {
 // Compare multiple jet R values for a given trigger
 void plotTrigger(const TString &trigger) {
   gStyle->SetOptStat(0);
-  std::vector<TString> jetRs = {"0.2", "0.3", "0.4", "0.5", "0.6"};
+
   TCanvas *c = new TCanvas(Form("c_compare_%s", trigger.Data()),
                            "Jet R Comparison", 800, 600);
   c->SetFillColor(0);
@@ -178,7 +179,8 @@ void plotTrigger(const TString &trigger) {
   // Draw legends and labels
   c->cd();
   leg->Draw();
-  AddSTARLabels(c, Form("Anti-k_{T}, %s trigger", trigger.Data()));
+  AddSTARLabels(
+      c, Form("Anti-k_{T}, %s trigger, |#eta| < 1-#it{R}", trigger.Data()));
 
   c->cd();
   c->SaveAs("data" + trigger + ".pdf");
@@ -188,7 +190,6 @@ void plotTrigger(const TString &trigger) {
 void plot() {
 
   std::vector<TString> triggers = {"HT2", "JP2"};
-  std::vector<TString> jetRs = {"0.2", "0.3", "0.4", "0.5", "0.6"};
 
   for (const auto &jetR : jetRs) {
     plotR(jetR);
