@@ -187,9 +187,9 @@ void process(TString trigger = "HT2", TString jetR = "0.6") {
       allJets.Filter("mc_pt != -9 && reco_pt != -9", "matched jets");
   // Filter by trigger match
 
-  auto trigJets = allJets.Filter(
-      Form("reco_trigger_match_%s != 0 && isTriggerEvent", trigger.Data()),
-      Form("%s triggered", trigger.Data()));
+  auto trigJets =
+      allJets.Filter(Form("reco_trigger_match_%s != 0", trigger.Data()),
+                     Form("%s triggered", trigger.Data()));
 
   // 1-Miss Rate
   PlotRatio(matchedJets, allJets, "mc", "matched", "mc", outDir, trigger, jetR);
