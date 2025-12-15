@@ -15,17 +15,14 @@
 #include <string>
 #include <vector>
 
-// Helper function to create variable bin array
-const std::vector<double> pt_reco_bins = {
-    5.0,  6.0,  7.0,  8.0,  9.0,  10.0, 11.0, 12.0, 13.0, 14.0,
-    15.0, 16.0, 17.0, 18.0, 19.0, 20.0, 21.0, 22.0, 23.0, 24.0,
-    25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0, 33.0, 34.0,
-    35.0, 36.0, 37.0, 38.0, 39.0, 40.0, 42.0, 44.0, 46.0, 48.0,
-    50.0, 52.0, 54.0, 56.0, 58.0, 60.0, 68.0, 80.0, 90.0};
-// PT binning for MC truth jets (particle-level)
-const std::vector<double> pt_mc_bins = {5.0,  6.9,  8.2,  9.7,  11.5,
-                                        13.6, 16.1, 19.0, 22.5, 26.6,
-                                        31.4, 37.2, 44.0, 52.0, 80.0};
+#include "/home/prozorov/dev/star/jets_pp_2012/macros/full_ana/cross_section/config.h"
+
+using namespace CrossSectionConfig;
+
+const std::vector<double> ptLead_reco_bins = {
+    1.0,  2.0,  3.0,  4.1,  5.0,  6.0,  7.0,  8.0,  9.0,  10.0,
+    11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0,
+    21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0};
 
 // Plot ratio with variable binning
 void PlotRatio(ROOT::RDF::RNode dfNum, ROOT::RDF::RNode dfDenom,
@@ -52,6 +49,33 @@ void PlotRatio(ROOT::RDF::RNode dfNum, ROOT::RDF::RNode dfDenom,
                        Form("%s rate; p_{t} [GeV/c]; Counts", histName.Data()),
                        static_cast<int>(bins.size() - 1), bins.data()},
                       ptColumn.Data(), "mc_weight");
+
+  auto h_num_2D_vs_lead = dfNum.Histo2D(
+      {histName + name + "h_num_2D_vs_lead",
+       Form("%s rate vs lead; lead p_{t} [GeV/c]; p_{t} "
+            "[GeV/c]; Counts",
+            histName.Data()),
+       static_cast<int>(ptLead_reco_bins.size() - 1), ptLead_reco_bins.data(),
+       static_cast<int>(bins.size() - 1), bins.data()},
+      "reco_ptLead", ptColumn.Data(), "mc_weight");
+
+  auto h_denom_2D_vs_lead = dfDenom.Histo2D(
+      {histName + name + "h_denom_2D_vs_lead",
+       Form("%s rate vs lead; lead p_{t} [GeV/c]; p_{t} "
+            "[GeV/c]; Counts",
+            histName.Data()),
+       static_cast<int>(ptLead_reco_bins.size() - 1), ptLead_reco_bins.data(),
+       static_cast<int>(bins.size() - 1), bins.data()},
+      "reco_ptLead", ptColumn.Data(), "mc_weight");
+
+  TH2D *h_ratio_2D_vs_lead =
+      (TH2D *)h_num_2D_vs_lead->Clone("h_ratio_2D_vs_lead");
+  h_ratio_2D_vs_lead->Divide(h_denom_2D_vs_lead.GetPtr());
+
+  TH1D *h_num_ptLead = h_num_2D_vs_lead->ProjectionX("h_num_ptLead");
+  TH1D *h_denom_ptLead = h_denom_2D_vs_lead->ProjectionX("h_denom_ptLead");
+  TH1D *h_ratio_ptLead = (TH1D *)h_num_ptLead->Clone("h_ratio_ptLead");
+  h_ratio_ptLead->Divide(h_denom_ptLead);
 
   // Clone histograms for manipulation
   TH1D *h_num_clone = (TH1D *)h_num->Clone("h_num_clone");
@@ -141,6 +165,14 @@ void PlotRatio(ROOT::RDF::RNode dfNum, ROOT::RDF::RNode dfDenom,
   h_num_clone->Write((TString) "h_num");
   h_denom_clone->Write((TString) "h_denom");
   h_ratio->Write((TString) "h_ratio");
+
+  h_num_ptLead->Write((TString) "h_num_ptLead");
+  h_denom_ptLead->Write((TString) "h_denom_ptLead");
+  h_ratio_ptLead->Write((TString) "h_ratio_ptLead");
+
+  h_num_2D_vs_lead->Write((TString) "h_num_2D_vs_lead");
+  h_denom_2D_vs_lead->Write((TString) "h_denom_2D_vs_lead");
+  h_ratio_2D_vs_lead->Write((TString) "h_ratio_2D_vs_lead");
   outFile->Close();
 
   delete outFile;

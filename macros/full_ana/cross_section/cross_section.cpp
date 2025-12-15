@@ -403,7 +403,8 @@ void calculateCrossSection(const std::string &trigger = "JP2",
   std::cout << "Step 1: Loading run mapping..." << std::endl;
   std::map<int, int> inverseRunMap;
   std::map<int, int> runMap =
-      loadRunMap("/home/prozorov/dev/star/jets_pp_2012/macros/ana/run_map.txt",
+      loadRunMap("/home/prozorov/dev/star/jets_pp_2012/macros/full_ana/"
+                 "cross_section/run_map.txt",
                  inverseRunMap);
 
   // =======================================================================
@@ -516,7 +517,7 @@ void calculateCrossSection(const std::string &trigger = "JP2",
   // =======================================================================
   std::cout << "\nStep 4: Loading luminosity data..." << std::endl;
   TString lumiFileName =
-      "/home/prozorov/dev/star/jets_pp_2012/macros/ana/lumi.root";
+      "/home/prozorov/dev/star/jets_pp_2012/macros/full_ana/lumi.root";
   TFile *lumiFile = TFile::Open(lumiFileName);
   if (!lumiFile || lumiFile->IsZombie()) {
     std::cerr << "Error: Cannot open lumi file: " << lumiFileName << std::endl;

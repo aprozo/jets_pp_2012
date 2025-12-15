@@ -52,7 +52,7 @@ echo ""
 #run unfolding 
 echo "Running unfolding step..."
 cd $working_dir/../unfolding
-# ./run.sh
+./run.sh
 echo "Unfolding step complete."
 echo ""
 
@@ -61,8 +61,7 @@ cd $working_dir
 # Run the cross-section macro
 root -l -b -q \
   -e 'gSystem->Load("libRooUnfold"); gSystem->AddIncludePath(Form("-I%s/include", getenv("ROOUNFOLD_HOME")));' \
-  cross_section.cpp
-
+cross_section.cpp+
 echo ""
 echo "=========================================="
 echo "Analysis complete!"
