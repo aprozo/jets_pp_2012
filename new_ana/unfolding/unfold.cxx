@@ -1,0 +1,353 @@
+#include "RooUnfoldBayes.h"
+#include "RooUnfoldResponse.h"
+#include "RooUnfoldSvd.h"
+
+#include <ROOT/RDataFrame.hxx>
+
+#include "TCanvas.h"
+#include "TColor.h"
+#include "TEntryList.h"
+#include "TFile.h"
+#include "TH1D.h"
+#include "TH2D.h"
+#include "TLatex.h"
+#include "TLegend.h"
+#include "TMath.h"
+#include "TPaletteAxis.h"
+#include "TRandom3.h"
+#include "TStyle.h"
+#include "TSystem.h"
+#include "TTree.h"
+
+#include "/home/prozorov/dev/star/jets_pp_2012/new_ana/config.h"
+
+using namespace CrossSectionConfig;
+AnalysisConfig cfg;
+// get pearson coeffs from covariance matrix
+TH2D *getPearsonCoeffs(const TMatrixD &covMatrix) {
+  Int_t nrows = covMatrix.GetNrows();
+  Int_t ncols = covMatrix.GetNcols();
+
+  TH2D *pearson = new TH2D("pearson", "", nrows, 0, nrows, ncols, 0, ncols);
+  for (Int_t row = 0; row < nrows; row++) {
+    for (Int_t col = 0; col < ncols; col++) {
+      Double_t pearson_val = 0.;
+      if (covMatrix(row, row) != 0. && covMatrix(col, col) != 0.)
+        pearson_val = covMatrix(row, col) /
+                      TMath::Sqrt(covMatrix(row, row) * covMatrix(col, col));
+      pearson->SetBinContent(row + 1, col + 1, pearson_val);
+    }
+  }
+  return pearson;
+}
+
+// divide by bin width
+TH1D *divideByBinWidth(TH1D *hist) {
+  for (int i = 1; i <= hist->GetNbinsX(); i++) {
+    double binWidth = hist->GetBinWidth(i);
+    if (binWidth != 0)
+      hist->SetBinContent(i, hist->GetBinContent(i) / binWidth);
+  }
+  return hist;
+}
+
+TH2D *remakeMatrix(TH2D *hist, TString xTitle, TString yTitle) {
+  TH2D *newHist;
+  // xaxis for reco
+  vector<double> new_x_axis;
+  if (xTitle == "reco")
+    new_x_axis = pt_reco_bins;
+  else if (xTitle == "unfolded")
+    new_x_axis = pt_mc_bins;
+
+  vector<double> new_y_axis;
+  if (yTitle == "mc")
+    new_y_axis = pt_mc_bins;
+  else if (yTitle == "unfolded")
+    new_y_axis = pt_mc_bins;
+
+  // assert the number of bins to existing pt_bins
+  if (new_x_axis.size() != hist->GetNbinsX() + 1) {
+    cout << "Error: x axis size mismatch" << endl;
+    cout << "Expected: " << new_x_axis.size() << endl;
+    cout << " Got: " << hist->GetNbinsX() + 1 << endl;
+    cout << "Name: " << hist->GetName() << endl;
+    cout << "xTitle: " << xTitle << endl;
+    cout << "yTitle: " << yTitle << endl;
+  }
+  if (new_y_axis.size() != hist->GetNbinsY() + 1) {
+    cout << "Error: y axis size mismatch" << endl;
+    cout << "Expected: " << new_y_axis.size() << endl;
+    cout << " Got: " << hist->GetNbinsY() + 1 << endl;
+    cout << "Name: " << hist->GetName() << endl;
+    cout << "xTitle: " << xTitle << endl;
+    cout << "yTitle: " << yTitle << endl;
+  }
+
+  newHist = new TH2D(hist->GetName() + (TString) "remake", hist->GetTitle(),
+                     new_x_axis.size() - 1, new_x_axis.data(),
+                     new_y_axis.size() - 1, new_y_axis.data());
+
+  for (int i = 1; i <= hist->GetNbinsX(); i++) {
+    for (int j = 1; j <= hist->GetNbinsY(); j++) {
+      newHist->SetBinContent(i, j, hist->GetBinContent(i, j));
+    }
+  }
+  newHist->GetXaxis()->SetTitle(xTitle + " p_{T}, GeV/c");
+  newHist->GetYaxis()->SetTitle(yTitle + " p_{T}, GeV/c");
+  newHist->GetZaxis()->SetTitle(hist->GetZaxis()->GetTitle());
+  return newHist;
+}
+
+void plotIterations(TCanvas *can, TString outPdf, RooUnfoldResponse *response,
+                    TH1D *hTruth, TH1D *hMeasured) {
+  const vector<Int_t> plotIterations = {1, 2, 3, 4, 5};
+  const Int_t nIter = plotIterations.size();
+
+  TLatex *tex = new TLatex();
+  tex->SetNDC();
+  tex->SetTextFont(42);
+  tex->SetTextSize(0.055);
+  can->Divide(2, 1);
+
+  TLegend *legend = new TLegend(0.30, 0.62, 0.44, 0.88);
+  legend->AddEntry(hTruth, "Truth", "l");
+  legend->AddEntry(hMeasured, "Measured", "l");
+
+  can->cd(1);
+  gPad->SetLogy();
+  hTruth->SetMarkerStyle(20);
+  hTruth->SetLineColor(kViolet);
+
+  TH1D *hMeasured_normalized = (TH1D *)hMeasured->Clone("hMeasured_normalized");
+  hMeasured_normalized = divideByBinWidth(hMeasured_normalized);
+  TH1D *hTruth_normalized = (TH1D *)hTruth->Clone("hTruth_normalized");
+  hTruth_normalized = divideByBinWidth(hTruth_normalized);
+  hMeasured_normalized->SetMarkerStyle(21);
+  hMeasured_normalized->SetLineColor(kTeal - 1);
+
+  hMeasured_normalized->Draw("hist");
+  hTruth_normalized->Draw("hist same");
+
+  TLine *line = new TLine();
+  line->SetLineStyle(2);
+  line->SetLineColor(kGray + 2);
+
+  RooUnfoldBayes unfolding[nIter];
+
+  for (int iter = 0; iter < nIter; iter++) {
+    cout << "Unfolding Iteration: " << plotIterations[iter] << endl;
+    can->cd(1);
+    unfolding[iter] = RooUnfoldBayes(response, hMeasured, plotIterations[iter]);
+    TH1D *hUnfolded = (TH1D *)unfolding[iter].Hunfold();
+    hUnfolded->SetName(Form("hUnfolded%i", iter));
+    hUnfolded->SetLineColor(iter + 2000);
+    hUnfolded->SetMarkerStyle(20);
+    hUnfolded->SetMarkerColor(iter + 2000);
+    legend->AddEntry(hUnfolded, Form("Iter%i", plotIterations[iter]), "pel");
+    TH1D *hUnfolded_normalized =
+        (TH1D *)hUnfolded->Clone(Form("hUnfolded_normalized%i", iter));
+    hUnfolded_normalized = divideByBinWidth(hUnfolded_normalized);
+    hUnfolded_normalized->Draw("PE same");
+
+    can->cd(2);
+    TH1D *xRatio = (TH1D *)hUnfolded->Clone(Form("xRatio%i", iter));
+
+    xRatio->SetLineColor(iter + 2000);
+    xRatio->SetMarkerStyle(20);
+    xRatio->SetMarkerColor(iter + 2000);
+    xRatio->Divide(hTruth);
+    xRatio->GetYaxis()->SetTitle("Unfolded/Truth");
+    xRatio->GetYaxis()->SetTitleOffset(1.1);
+    xRatio->GetYaxis()->SetRangeUser(0.8, 1.2);
+    // Draw +-5% band with lines
+    xRatio->Draw(iter == 0 ? "PE" : "PE same");
+    line->DrawLine(xRatio->GetXaxis()->GetXmin(), 1.05,
+                   xRatio->GetXaxis()->GetXmax(), 1.05);
+    line->DrawLine(xRatio->GetXaxis()->GetXmin(), 0.95,
+                   xRatio->GetXaxis()->GetXmax(), 0.95);
+  }
+  can->cd();
+  legend->Draw();
+  can->SaveAs(outPdf);
+  can->SetLogz(1);
+
+  RooUnfoldBayes lastUnfolding = unfolding[nIter - 1];
+  TH1D *hUnfolded = (TH1D *)lastUnfolding.Hunfold();
+
+  TH2D *hUnfoldingMatrix = new TH2D(lastUnfolding.UnfoldingMatrix());
+  hUnfoldingMatrix->SetTitle("Bin Migration probability");
+  hUnfoldingMatrix->SetName("UnfoldingMatrix");
+
+  can->cd();
+  hUnfoldingMatrix = remakeMatrix(hUnfoldingMatrix, "reco", "mc");
+  hUnfoldingMatrix->GetZaxis()->SetRangeUser(0.00001, 1);
+  hUnfoldingMatrix->Draw("colz TEXT45");
+
+  gPad->Update();
+  TPaletteAxis *palette =
+      (TPaletteAxis *)hUnfoldingMatrix->GetListOfFunctions()->FindObject(
+          "palette");
+  palette->SetX1NDC(0.90);
+  palette->SetX2NDC(0.92);
+
+  tex->DrawLatex(0.5, 0.35, "Unfolding Matrix");
+  can->SaveAs(outPdf);
+  delete hUnfoldingMatrix;
+
+  can->cd();
+  can->SetLogz(0);
+
+  for (int iter = 0; iter < nIter; iter++) {
+    TMatrixD covMatrix = unfolding[iter].Eunfold(RooUnfold::kCovariance);
+
+    TH2D *pearson = getPearsonCoeffs(covMatrix);
+    pearson->SetName(Form("pearson%i", plotIterations[iter]));
+    pearson->SetTitle(
+        Form("Pearson Coefficients;bin pt_{unfolded};bin pt_{unfolded}"));
+    pearson = remakeMatrix(pearson, "unfolded", "unfolded");
+    pearson->GetZaxis()->SetRangeUser(-1, 1);
+    pearson->Draw("colz TEXT");
+    gPad->Update();
+    tex->DrawLatex(0.2, 0.35,
+                   Form("Pearson Coefficients Iter %i", plotIterations[iter]));
+
+    TPaletteAxis *palette =
+        (TPaletteAxis *)pearson->GetListOfFunctions()->FindObject("palette");
+    palette->SetX1NDC(0.91);
+    palette->SetX2NDC(0.93);
+
+    can->SaveAs(outPdf);
+  }
+}
+
+void single_unfold(const std::string &trigger, const std::string &jetR) {
+
+  ROOT::EnableImplicitMT();
+
+  TString inputFile = Form("%s/merged_matching_JP2_R%s.root",
+                           cfg.datapath.c_str(), jetR.c_str());
+
+  gStyle->SetOptStat(0);
+  gStyle->SetPaintTextFormat(".2f");
+  ///////////////////////////////////////////////////////////////////////////
+  const float testFraction = 0.1;
+  TString outFileName =
+      Form("response_%s_R%s.root", trigger.c_str(), jetR.c_str());
+  TFile *responseFile = new TFile(outFileName, "RECREATE");
+
+  // Create RDataFrame
+  TString treeName = "MatchedTree";
+  ROOT::RDataFrame allJets(treeName, inputFile);
+
+  // get first cut from fist bin in pt_reco_bins and pt_mc_bins
+
+  double ptRecoCut = pt_reco_bins[0];
+  double ptMcCut = pt_mc_bins[0];
+
+  // Filter for matched jets and define helper columns
+
+  auto matchedJets =
+      allJets
+          .Filter(Form("mc_pt > %f && reco_pt > %f", ptMcCut, ptRecoCut),
+                  "matched jets")
+          .Define("deltaPt", "reco_pt - mc_pt")
+          .Define("JES", "deltaPt / mc_pt")
+          .DefineSlot("randNum",
+                      [](unsigned int slot) { return gRandom->Uniform(); }, {});
+
+  // Split into training and test sets
+  auto trainSet =
+      matchedJets.Filter(Form("randNum > %f", testFraction), "training set");
+  auto testSet =
+      matchedJets.Filter(Form("randNum <= %f", testFraction), "test set");
+
+  // Fill training histograms using Histo1D and Histo2D
+  auto hMeasured =
+      trainSet.Histo1D({"Measured", ";p_{t}, GeV/c; dN/dp_{t}",
+                        (int)(pt_reco_bins.size() - 1), pt_reco_bins.data()},
+                       "reco_pt", "mc_weight");
+
+  auto hTruth =
+      trainSet.Histo1D({"Truth", ";p_{t}, GeV/c;dN/dp_{t}",
+                        (int)(pt_mc_bins.size() - 1), pt_mc_bins.data()},
+                       "mc_pt", "mc_weight");
+
+  auto hResponseMatrix = trainSet.Histo2D(
+      {"hResponseMatrix", "; Measured; Truth", (int)(pt_reco_bins.size() - 1),
+       pt_reco_bins.data(), (int)(pt_mc_bins.size() - 1), pt_mc_bins.data()},
+      "reco_pt", "mc_pt", "mc_weight");
+
+  // Fill test histograms
+  auto hMeasuredTest =
+      testSet.Histo1D({"MeasuredTest", ";p_{t}, GeV/c; dN/dp_{t}",
+                       (int)(pt_reco_bins.size() - 1), pt_reco_bins.data()},
+                      "reco_pt", "mc_weight");
+
+  auto hTruthTest =
+      testSet.Histo1D({"TruthTest", ";p_{t}, GeV/c;dN/dp_{t}",
+                       (int)(pt_mc_bins.size() - 1), pt_mc_bins.data()},
+                      "mc_pt", "mc_weight");
+
+  // Fill detector resolution
+  auto detectorResolution =
+      matchedJets.Histo2D({"detectorResolution",
+                           "Detector Resolution; p_{T}^{mc}, GeV/c; "
+                           "p_{T}^{reco} - p_{T}^{mc}, GeV/c",
+                           1000, 0., 100., 1000, -100., 100.},
+                          "mc_pt", "deltaPt", "mc_weight");
+
+  // Create RooUnfoldResponse (note: GetPtr() to get raw pointer)
+  auto response = new RooUnfoldResponse(hMeasured.GetPtr(), hTruth.GetPtr(),
+                                        hResponseMatrix.GetPtr());
+  response->SetName("my_response");
+
+  // Fit slices and calculate stdDev
+  detectorResolution->FitSlicesY(0, 0, -1, 10, "QNR G2");
+  auto hMean = (TH1D *)gDirectory->Get("detectorResolution_1");
+  auto hSigma = (TH1D *)gDirectory->Get("detectorResolution_2");
+  auto stdDev =
+      new TH1D("stdDev", "stdDev", hMean->GetNbinsX(),
+               hMean->GetXaxis()->GetXmin(), hMean->GetXaxis()->GetXmax());
+  for (int i = 1; i <= detectorResolution->GetNbinsX(); i++) {
+    TH1D *slice = detectorResolution->ProjectionY("slice", i, i);
+    stdDev->SetBinContent(i, slice->GetStdDev());
+  }
+
+  responseFile->cd();
+  detectorResolution->Write();
+  hMean->Write();
+  hSigma->Write();
+  stdDev->Write();
+
+  hMeasured->Write();
+  hTruth->Write();
+  hMeasuredTest->Write();
+  hTruthTest->Write();
+  hResponseMatrix->Write();
+  response->Write();
+  responseFile->Save();
+
+  // Draw closure test check
+  TCanvas *can = new TCanvas("can", "Closure Test Check", 1400, 600);
+  TString outPdf =
+      Form("pdf/closure_check_%s_R%s.pdf", trigger.c_str(), jetR.c_str());
+  can->SaveAs(outPdf + "[");
+  plotIterations(can, outPdf, response, hTruthTest.GetPtr(),
+                 hMeasuredTest.GetPtr());
+  can->SaveAs(outPdf + "]");
+  responseFile->Close();
+}
+
+void unfold() {
+
+  for (const auto &trigger : cfg.triggers) {
+    for (const auto &jetR : cfg.jetRs) {
+      cout << "Unfolding for trigger: " << trigger << ", jet radius: " << jetR
+           << endl;
+      single_unfold(trigger, jetR);
+    }
+  }
+}
+
+//==============================================================================
