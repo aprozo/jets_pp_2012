@@ -1,98 +1,89 @@
+# Jets in pp 200 GeV, Run-12 — inclusive jet cross section
 
-# Jets in pp 2012 200 GeV
+Anti-k_T R=0.5, |eta_det|<0.5 inclusive jet cross section from STAR pp200 Run-12,
+validated per trigger (JP0, JP1, JP2, HT2) against Dmitry Kalinkin's Table III.
+Reads `TStarJetPicoDst` trees (https://github.com/wsu-yale-rhig/TStarJetPicoMaker).
+Two unfolding solvers: RooUnfoldBayes (nIter=2, default) and Dmitry-style
+unregularized matrix inversion (cross-check).
 
-This is an analysis for work in special container which analyzes `TStarJetPicoDsts` https://github.com/wsu-yale-rhig/TStarJetPicoMaker.
+The pipeline is **flag-free**: no `JETS_*` environment variables anywhere;
+every physics choice is hardcoded in `new_ana/config.h` and edited there. This
+is deliberate — the same pipeline must run at radii Dmitry never published
+(e.g. R=0.4) as a standalone physics measurement, so nothing in it may depend
+on tuning against a reference.
 
-The companion external repository with how to read it
-https://github.com/kkauder/eventStructuredAu 
+Everything downstream of the picos runs inside `star_star.simg`
+(`/gpfs01/star/pwg/prozorov/jets_pp_2012/star_star.simg`).
 
+## The one idea
 
-The image container is `star_star.simg`.
-- You need to install either [Docker engine](https://docs.docker.com/get-started/get-docker/) or [Apptainer (singularity)](https://apptainer.org/docs/admin/main/installation.html).
-For simplier Apptainer (singularity) installation:
-```bash
-sudo apt update
-sudo apt install -y software-properties-common
-sudo add-apt-repository -y ppa:apptainer/ppa
-sudo apt update
-sudo apt install -y apptainer
+**Triggers are an analysis filter, not a production split.** One Stage-1 pass
+over each pico writes every per-jet `trigger_match_JP0/JP1/JP2/HT2` bit and every
+per-event `fired_JP0/JP1/JP2` bit into a single tree, at one low jet-find floor
+(4.8 GeV). So there is exactly **one data production and one embedding
+production**; each trigger is selected — and its analysis floor
+(`config.h::TrigPtFloor`) applied — at Stage-2.
+
+## Layout
+
+```
+src/                    RunppAna Stage-1 jet finder (hardware-first trigger match)
+container.sh            Stage-1 worker: one pico -> all radii, all triggers
+submit/production.xml   one condor template (type = data | embedding)
+run_production.sh       Stage-1 driver: build -> submit -> wait -> merge
+macros/matching_mc_reco.cxx   builds MatchedTree (embedding reco<->truth)
+lists/jet_pico_dst/     data.list, embedding.list  (the latest picos)
+
+new_ana/
+  config.h              binning, floors/quote windows, C(pt)=RxThat tables,
+                        Systematic variation presets — the single source of truth
+  corrections/          hw_ratio.C (R), measure_T.C (That) — derive C(pt)
+  unfolding/unfold.cxx  per-trigger Miss/Fake response (decoupled det-eta gate)
+  cross_section.cpp     FINAL unifier: raw -> /C -> Bayes -> normalize -> xsec_<T>.root
+  cross_section_inverse/  second solver: square response + RooUnfoldInvert
+  plot_alltriggers.C    overlay every trigger vs Dmitry's Table III
+  run.sh                Stage-2 driver: response -> cross_section -> plot
+systematics/            config-as-code variation driver + envelope band builder
 ```
 
-### Notes
-File `/gpfs01/star/pwg/youqi/run12/embedding/P12id/picos/20235003/out/pt-hat1115_000.root` does not contain Mc entries
+## Stage-1 — produce the trees
 
-
-
-
-## Instruction on how to produce TStarJetPicoDsts from minimcs and MuDsts:
-
-* 1. Make a List of minimcs and MuDsts
-**Command for making the full list:**
-    ```bash
-    find "$PWD" -type f | sort >> ~/TStarJetPicoMaker/<name_of_list>.list
-    ```
-**Note:** The `| sort` flag is necessary even if your inputs seem ordered by eye, because `find` will traverse the directory tree in the order items are stored within the directory entries. This will (mostly) be consistent from run to run on the same machine and will essentially be "file/directory creation order" if there have been no deletes.  
-However, some file systems will re-order directory entries as part of compaction operations or when the size of the entry needs to be expanded, so there's always a small chance the "raw" order will change over time. If you want a consistent order, feed the output through an extra sorting stage.
-    
-**Command for separating MuDsts and minimcs:**
-    ```bash
-    sed '/minimc/!d' <name_of_list>.list >> <minimc_list_name>.list
-    ```
-    And similar for MuDsts.
-
-* 2. Split Each List into Equal Files/Lines
-Use the `split` command. Example:
 ```bash
-    split --suffix-length=2 --numeric-suffixes --lines=100 --additional-suffix=.list --verbose <input_filename> <output_prefix>_
-```
-This splits into files with 100 lines each.  
-Or, replace `--lines=100` with, e.g., `-n l/5` to split evenly into 5 files.
-    
-
-* 3. Change Filename Base in `macros/MakeTStarJetPico_example.cxx`
-
-(Around line 100 currently.)  
-    If your lists have a different structure than e.g. `MuDsts1115_00` (where `1115` is the pT-hat range and `00` is the first list of 100 MuDsts), you may need to rewrite this block.
-
-Test in an interpreter (e.g., a ROOT environment) until you get a sensible value for `std::string unique_name`.
-
-* 4. Change the Call in `submit/jetPicoProduction_example.xml`
-
-Match that number of lines. (Nominally, I have 100 files per job, so there will probably be a `100` as the penultimate argument to be changed to suit your job size.)
-    
-
-* 5. Adjust `find_mu`, `find_mc` and `slice_name` in `submit/submit.py`
-
-Adjust to match the lists of files you're inputting, and update `slice_name` so the XML script knows the name of the files it's copying from `$SCRATCH` to local.
-    
-The way `slice_name` is coded, be careful if you have lists like `minimcs1115.list` before splitting into 100 lines each. The Python looks for `minimcs`, so name these instead `minimc1115.list` to avoid double-counting.
-
-
-* 6. Adjust Default Arguments in `submit/submit.py`
-
-Update to suit your case so the defaults will work and you won’t have to input them each time.
-    
-
-* 7. Submit Jobs
-
-Once the above is adjusted, simply run:
-    
-```bash
-    python submit/submit.py
-```
-    
-This will use the XML script `n` times, where `n` is the number of input minimc or MuDsts lists.
-    
-
-
-* 8. If You Adjust Anything in `StRoot/TStarJetPicoMaker/`
-
-Remember to run:
-```bash
-./macros/compile.csh
+./run_production.sh all        # build -> submit data+embedding -> wait -> merge
 ```
 
+Produces `output/merged_data_R0.5.root` (ResultTree) and
+`output/merged_matching_R0.5.root` (MatchedTree). `star-submit-template` runs on
+the host; the build and merge run in the container. After any `src/` change,
+`rm -f run12prod.zip *.package` so the scheduler ships a fresh binary.
 
-* 9. Ensure `log/tmplogs` Directory Exists
+## Stage-2 — cross section
 
-Make sure the directory exists where the submit script expects it, or it will try to submit jobs until the very end, then fail.
+```bash
+bash new_ana/run.sh all                              # Bayes (default solver)
+bash new_ana/cross_section_inverse/run_inverse.sh    # matrix-inversion cross-check
+```
+
+For each trigger in `config.h` it builds the Miss/Fake response, unfolds the
+data (RooUnfoldBayes, nIter=2) after dividing by the measured trigger
+correction C(pt)=R×That, normalizes by eta acceptance / bin width / per-run
+luminosity (runtime Leff from `lumi_zilong_full.root` minus badRuns), restricts
+to the trigger's quote window (`config.h::QuoteLo`), and writes
+`xsec_<T>_R0.5.root` (`canonical` + `reference`). `plot_alltriggers.C` overlays
+them against Dmitry's `jet_cross_section_dmitriyR0.5.root`. Outputs land in
+`new_ana/`.
+
+Quote windows (below them a standalone trigger only extrapolates its turn-on):
+JP1 from 8.2 (low-pT workhorse), JP2/JP0 from 13.6, HT2 from 11.5 GeV.
+
+## Corrections (derivation only)
+
+The trigger correction C(pt)=R×That is frozen in `config.h::TrigEffMeas`. To
+re-derive it: `bash new_ana/corrections/run.sh` (R from `hw_ratio.C`, That from
+`measure_T.C`), then hand-edit the tables.
+
+## Systematics
+
+`bash systematics/run_systematics.sh` after the nominal run. The variation
+matrix is `config.h::Systematics()` (typed presets, config-as-code); see
+`systematics/README.md`.
