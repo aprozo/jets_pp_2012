@@ -103,59 +103,94 @@ static std::vector<std::vector<double>> boxconv2d(const std::vector<std::vector<
 
 // ---------------------------------------------------------------------------
 // DATA: category-partitioned, C(pt)-corrected, summed raw spectrum on McBins.
-static std::unique_ptr<TH1D> RawCombined(const std::string &jetR)
+// The three PRE-correction category histograms are cached on disk
+// (data_JPX_R<R>_categories.root): the 16 GB tree read happens once, and
+// floor/lambda/trigEff studies reuse the cache. Delete the file (or run after
+// a selection change — the driver does not do this for you) to force a
+// re-read; the C(pt) division and any trigEffScale are applied AFTER loading,
+// so every variation is served correctly from the same cache.
+static std::unique_ptr<TH1D> RawCombined(const std::string &jetR, const Systematic &syst)
 {
-   const std::string dataFile = Form("%smerged_data_R%s.root", cfg.datapath.c_str(), jetR.c_str());
-   ROOT::RDataFrame df("ResultTree", dataFile.c_str());
-
-   auto anyOf = [](const ROOT::VecOps::RVec<bool> &v) {
-      for (auto b : v)
-         if (b) return true;
-      return false;
-   };
-
-   auto dfn = df.Filter(
-                   [](int runIndex) {
-                      return runIndex >= 0 &&
-                             std::find(cfg.badRuns.begin(), cfg.badRuns.end(), runIndex) == cfg.badRuns.end();
-                   },
-                   {"runid1"})
-                 .Define("evt_sf0", anyOf, {"trigger_match_JP0"})
-                 .Define("evt_sf1", anyOf, {"trigger_match_JP1"})
-                 .Define("evt_sf2", anyOf, {"trigger_match_JP2"})
-                 .Define("rcat_evt", "evt_sf2 ? 2 : (evt_sf1 ? 1 : (evt_sf0 ? 0 : -1))");
-
-   // Per-category jet masks: same acceptance + windows as the response reco
-   // side; data additionally requires the recorded hardware accept.
-   const char *base = "abs(det_eta) < 0.5 && neutral_fraction <= 0.95 && ";
-   auto d2 = dfn.Define("sel2", std::string(base) +
-                                   "rcat_evt == 2 && trigger_match_JP2 && pt_corrected >= 8.4 && "
-                                   "(fired_JP0 || fired_JP1 || fired_JP2)")
-                .Define("pt2", "pt_corrected[sel2]");
-   auto d1 = d2.Define("sel1", std::string(base) +
-                                  "rcat_evt == 1 && trigger_match_JP1 && pt_corrected > 8.2 && "
-                                  "(fired_JP0 || fired_JP1)")
-                .Define("pt1", "pt_corrected[sel1]");
-   auto d0 = d1.Define("sel0", std::string(base) +
-                                  "rcat_evt == 0 && trigger_match_JP0 && pt_corrected < 22.5 && fired_JP0")
-                .Define("pt0", "pt_corrected[sel0]");
-
    const std::vector<double> &bins = McBins();
-   auto h2 = d0.Histo1D({"jpx_cat2", "", (int)bins.size() - 1, bins.data()}, "pt2");
-   auto h1 = d0.Histo1D({"jpx_cat1", "", (int)bins.size() - 1, bins.data()}, "pt1");
-   auto h0 = d0.Histo1D({"jpx_cat0", "", (int)bins.size() - 1, bins.data()}, "pt0");
+   const std::string cachePath =
+      Form("%sdata_JPX_R%s_categories.root", cfg.workdir.c_str(), jetR.c_str());
+
+   TH1D *cat[3] = {nullptr, nullptr, nullptr};
+   if (!gSystem->AccessPathName(cachePath.c_str())) {
+      TFile fc(cachePath.c_str(), "READ");
+      for (int c = 0; c < 3; ++c) {
+         auto *h = (TH1D *)fc.Get(Form("jpx_cat%d", c));
+         if (h) {
+            cat[c] = (TH1D *)h->Clone(Form("jpx_cat%d_c", c));
+            cat[c]->SetDirectory(0);
+         }
+      }
+      if (cat[0] && cat[1] && cat[2])
+         std::cout << "[jpx][data] using cached category histograms " << cachePath
+                   << " (delete after any selection change!)" << std::endl;
+   }
+
+   if (!cat[0] || !cat[1] || !cat[2]) {
+      const std::string dataFile = Form("%smerged_data_R%s.root", cfg.datapath.c_str(), jetR.c_str());
+      ROOT::RDataFrame df("ResultTree", dataFile.c_str());
+
+      auto anyOf = [](const ROOT::VecOps::RVec<bool> &v) {
+         for (auto b : v)
+            if (b) return true;
+         return false;
+      };
+
+      auto dfn = df.Filter(
+                      [](int runIndex) {
+                         return runIndex >= 0 && std::find(cfg.badRuns.begin(), cfg.badRuns.end(),
+                                                           runIndex) == cfg.badRuns.end();
+                      },
+                      {"runid1"})
+                    .Define("evt_sf0", anyOf, {"trigger_match_JP0"})
+                    .Define("evt_sf1", anyOf, {"trigger_match_JP1"})
+                    .Define("evt_sf2", anyOf, {"trigger_match_JP2"})
+                    .Define("rcat_evt", "evt_sf2 ? 2 : (evt_sf1 ? 1 : (evt_sf0 ? 0 : -1))");
+
+      // Per-category jet masks: the SAME CatJetGate as the response reco side
+      // (promotion.h — one definition); data additionally requires the
+      // recorded hardware accept.
+      const std::string base = "abs(det_eta) < 0.5 && neutral_fraction <= 0.95 && ";
+      auto d2 = dfn.Define("sel2", base + "rcat_evt == 2 && " + CatJetGate(2, "", "pt_corrected") +
+                                      " && (fired_JP0 || fired_JP1 || fired_JP2)")
+                   .Define("pt2", "pt_corrected[sel2]");
+      auto d1 = d2.Define("sel1", base + "rcat_evt == 1 && " + CatJetGate(1, "", "pt_corrected") +
+                                     " && (fired_JP0 || fired_JP1)")
+                   .Define("pt1", "pt_corrected[sel1]");
+      auto d0 = d1.Define("sel0", base + "rcat_evt == 0 && " + CatJetGate(0, "", "pt_corrected") +
+                                     " && fired_JP0")
+                   .Define("pt0", "pt_corrected[sel0]");
+
+      auto h2 = d0.Histo1D({"jpx_cat2", "", (int)bins.size() - 1, bins.data()}, "pt2");
+      auto h1 = d0.Histo1D({"jpx_cat1", "", (int)bins.size() - 1, bins.data()}, "pt1");
+      auto h0 = d0.Histo1D({"jpx_cat0", "", (int)bins.size() - 1, bins.data()}, "pt0");
+
+      TFile fc(cachePath.c_str(), "RECREATE");
+      h0->Write("jpx_cat0");
+      h1->Write("jpx_cat1");
+      h2->Write("jpx_cat2");
+      fc.Close();
+      std::cout << "[jpx][data] category cache written: " << cachePath << std::endl;
+
+      cat[0] = (TH1D *)h0->Clone("jpx_cat0_c");
+      cat[1] = (TH1D *)h1->Clone("jpx_cat1_c");
+      cat[2] = (TH1D *)h2->Clone("jpx_cat2_c");
+      for (int c = 0; c < 3; ++c) cat[c]->SetDirectory(0);
+   }
 
    // Measured trigger correction per category: divide the hardware-gated data
    // by C(pt) = R x T-hat (config.h) to move it onto the simulator ruler the
    // response is built on. cat0 (JP0) has no measured correction (C = 1).
-   TH1D *cat[3] = {(TH1D *)h0->Clone("jpx_cat0_c"), (TH1D *)h1->Clone("jpx_cat1_c"),
-                   (TH1D *)h2->Clone("jpx_cat2_c")};
    double nJets[3] = {0, 0, 0};
    for (int c = 0; c < 3; ++c) {
-      cat[c]->SetDirectory(0);
       nJets[c] = cat[c]->Integral();
       for (int i = 1; i <= cat[c]->GetNbinsX(); ++i) {
-         const double p = TrigEffMeas(CatTrigger(c), cat[c]->GetXaxis()->GetBinCenter(i));
+         const double p =
+            TrigEffMeas(CatTrigger(c), cat[c]->GetXaxis()->GetBinCenter(i)) * syst.trigEffScale;
          if (p > 0) {
             cat[c]->SetBinContent(i, cat[c]->GetBinContent(i) / p);
             cat[c]->SetBinError(i, cat[c]->GetBinError(i) / p);
@@ -169,6 +204,7 @@ static std::unique_ptr<TH1D> RawCombined(const std::string &jetR)
    sum->SetDirectory(0);
    sum->Add(cat[1]);
    sum->Add(cat[0]);
+   for (int c = 0; c < 3; ++c) delete cat[c];
    return std::unique_ptr<TH1D>(sum);
 }
 
@@ -179,9 +215,13 @@ struct CoarseResponse {
    std::vector<double> b, x;
 };
 
-static CoarseResponse FilterAndCoarsen(const std::string &jetR)
+static CoarseResponse FilterAndCoarsen(const std::string &jetR, const Systematic &syst)
 {
-   const TString fineName = Form("%sresponse_JPX_R%s_fine.root", cfg.workdir.c_str(), jetR.c_str());
+   // A shape systematic (jesShift/jerSmear) reads its own rebuilt fine file;
+   // everything else reuses the nominal ingredients.
+   const std::string respTag = syst.needsResponse() ? SystTag(syst) : std::string("");
+   const TString fineName =
+      Form("%sresponse_JPX_R%s_fine%s.root", cfg.workdir.c_str(), jetR.c_str(), respTag.c_str());
    TFile fin(fineName, "READ");
    if (fin.IsZombie()) {
       std::cerr << "[FATAL] " << fineName << " missing — run response.cxx first" << std::endl;
@@ -320,12 +360,27 @@ static CoarseResponse FilterAndCoarsen(const std::string &jetR)
 }
 
 // ---------------------------------------------------------------------------
-void cross_section()
+// systName selects a preset from config.h::Systematics(); default "nominal" is
+// the physics result. A variation writes xsec_JPX_R<R>_<name>.root; the Dmitry
+// comparison PDF is drawn only for the nominal.
+//
+// lambdaOverride / floorOverride (explicit STUDY arguments, not flags): pass
+// >= 0 to try a different Tikhonov damping or block floor without editing
+// promotion.h. Study results overwrite the same output files — rerun the
+// defaults afterwards. The defaults (<0) use promotion.h.
+void cross_section(const char *systName = "nominal", double lambdaOverride = -1.0,
+                   double floorOverride = -1.0)
 {
    ROOT::EnableImplicitMT(kImtThreads);
    DefineCustomColors();
    gStyle->SetOptStat(0);
    TH1::SetDefaultSumw2();
+
+   const double tikLambda = (lambdaOverride >= 0.0) ? lambdaOverride : kTikhonovLambda;
+   const double jpxFloor = (floorOverride >= 0.0) ? floorOverride : kJpxFloor;
+
+   const Systematic syst = FindSystematic(systName);
+   std::cout << "[jpx] systematic = " << syst.name << std::endl;
 
    AppendBadRunsFromFile(cfg.workdir + "../lists/dmitry_extras.list");
 
@@ -337,8 +392,8 @@ void cross_section()
       }
 
       // ---- inputs ----------------------------------------------------------
-      std::unique_ptr<TH1D> hData = RawCombined(jetR);
-      CoarseResponse cr = FilterAndCoarsen(jetR);
+      std::unique_ptr<TH1D> hData = RawCombined(jetR, syst);
+      CoarseResponse cr = FilterAndCoarsen(jetR, syst);
 
       const std::vector<double> &grid = McBins();
       const int nb = (int)grid.size() - 1;
@@ -346,7 +401,7 @@ void cross_section()
       // ---- floor-restricted square block ------------------------------------
       int i0 = 0;
       for (int k = 0; k < nb; ++k)
-         if (grid[k] >= kJpxFloor - 1e-6) {
+         if (grid[k] >= jpxFloor - 1e-6) {
             i0 = k;
             break;
          }
@@ -358,7 +413,7 @@ void cross_section()
          }
       const int nfloor = i1 - i0 + 1;
       std::cout << "[jpx][solve] block bins [" << grid[i0] << "," << grid[i1 + 1] << ") — " << nfloor
-                << "x" << nfloor << ", lambda=" << kTikhonovLambda << std::endl;
+                << "x" << nfloor << ", lambda=" << tikLambda << std::endl;
 
       // M_ij = (b_i / matched_i) * A_ij / x_j, matched_i = in-block row sum
       // (matched content with truth OUTSIDE the block — buffer feed-down,
@@ -385,7 +440,7 @@ void cross_section()
 
       // ---- solve -------------------------------------------------------------
       TMatrixD R(nfloor, nfloor);
-      if (kTikhonovLambda <= 0.0) {
+      if (tikLambda <= 0.0) {
          Double_t det = 0.0;
          TMatrixD Minv(M);
          Minv.Invert(&det);
@@ -426,7 +481,7 @@ void cross_section()
          TMatrixD MtW = Mt * W;
          TMatrixD Areg = MtW * M;
          TMatrixD pen = Dinv * (Lt * L) * Dinv;
-         Areg += (kTikhonovLambda * kTikhonovLambda) * pen;
+         Areg += (tikLambda * tikLambda) * pen;
          Double_t det = 0.0;
          TMatrixD AregInv(Areg);
          AregInv.Invert(&det);
@@ -456,8 +511,9 @@ void cross_section()
          h->SetBinContent(i, h->GetBinContent(i) / w);
          h->SetBinError(i, h->GetBinError(i) / w);
       }
-      const double Leff = RuntimeLeff(cfg, "JP2"); // full lumi (JP2 unprescaled)
-      std::cout << "[jpx][lumi] Leff(full, JP2) = " << Leff << " pb^-1" << std::endl;
+      const double Leff = RuntimeLeff(cfg, "JP2") * syst.lumiScale; // full lumi (JP2 unprescaled)
+      std::cout << "[jpx][lumi] Leff(full, JP2) = " << Leff << " pb^-1 (lumiScale " << syst.lumiScale
+                << ")" << std::endl;
       h->Scale(1.0 / Leff);
 
       // ---- compare + write ---------------------------------------------------
@@ -472,7 +528,7 @@ void cross_section()
             ref->SetDirectory(0);
          }
       }
-      if (ref) {
+      if (ref && syst.name == "nominal") {
          std::cout << "[ratio JPX/Dmitry] (solved bins)\n";
          for (int b = 1; b <= ref->GetNbinsX(); ++b) {
             const double x = ref->GetXaxis()->GetBinCenter(b);
@@ -548,10 +604,13 @@ void cross_section()
          c->SaveAs(Form("%scomparison_with_dmitriy_R%s_JPX.pdf", cfg.workdir.c_str(), jetR.c_str()));
       }
 
-      TFile fout(Form("%sxsec_JPX_R%s.root", cfg.workdir.c_str(), jetR.c_str()), "RECREATE");
+      TFile fout(Form("%sxsec_JPX_R%s%s.root", cfg.workdir.c_str(), jetR.c_str(), SystTag(syst).c_str()),
+                 "RECREATE");
       h->Write("canonical");
       if (ref) ref->Write("reference");
+      StampProvenance(syst);
       fout.Close();
-      std::cout << "[jpx] wrote " << cfg.workdir << "xsec_JPX_R" << jetR << ".root" << std::endl;
+      std::cout << "[jpx] wrote " << cfg.workdir << "xsec_JPX_R" << jetR << SystTag(syst) << ".root"
+                << std::endl;
    }
 }

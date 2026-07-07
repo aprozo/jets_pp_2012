@@ -7,15 +7,17 @@
 # hardcoded in promotion.h (+ shared physics in ../config.h).
 #
 # Usage:
-#   bash run_jpx.sh              # fine response + cross section
-#   bash run_jpx.sh response     # fine response ingredients only (reads the tree)
-#   bash run_jpx.sh cross_section  # filter + invert + compare only (fast)
+#   bash run_jpx.sh [step] [systName]
+#     step     = all | response | cross_section        (default all)
+#     systName = a preset from config.h::Systematics() (default nominal)
+#   bash run_jpx.sh cross_section       # filter + invert + compare only (fast)
 
 set -eo pipefail
 
 JPX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SIMG=/gpfs01/star/pwg/prozorov/jets_pp_2012/star_star.simg
 step="${1:-all}"
+syst="${2:-nominal}"
 
 if [[ -z "${APPTAINER_NAME:-}${SINGULARITY_NAME:-}" ]]; then
     if [[ ! -f "$SIMG" ]]; then
@@ -34,11 +36,11 @@ echo "ROOT: $(root-config --version)"
 
 run_response() {
     cd "$JPX_DIR"
-    root -l -b -q 'response.cxx+'
+    root -l -b -q "response.cxx+(\"$syst\")"
 }
 run_cross_section() {
     cd "$JPX_DIR"
-    root -l -b -q 'cross_section.cpp+'
+    root -l -b -q "cross_section.cpp+(\"$syst\")"
 }
 
 case "$step" in

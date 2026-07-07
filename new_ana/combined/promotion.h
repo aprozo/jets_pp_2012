@@ -19,11 +19,14 @@
 //
 // Data enters RAW (no prescale weight) and is normalized by the FULL JP2
 // luminosity; the response's measured side carries the sampling probability
-// instead, per run r of the anchor data run:
-//   w2 = 1,  w1 = 1/ps0 + 1/ps1 - 1/(ps0*ps1)  (P(fired JP0 or JP1)),
+// instead:
+//   w2 = 1,  w1 = 1/ps0 + 1/ps1 - <1/(ps0*ps1)>  (P(fired JP0 or JP1)),
 //   w0 = 1/ps0
-// with ps0/ps1 from lists/run_prescales.txt (fallback: the lumi-weighted
-// averages).
+// The embedding is run-blind (its runid is a production timestamp, not a data
+// anchor run), so the weights are the lumi-weighted expectations over the run
+// mix: 1/psN = Leff(JPN)/Leff(JP2) from lumi_zilong_full.root (badRuns-
+// consistent, the same source as the normalization) and the union cross term
+// lumi-averaged from lists/run_prescales.txt.
 
 #include "../config.h"
 
@@ -43,15 +46,21 @@ namespace PromotionConfig {
 using CrossSectionConfig::AnalysisConfig;
 
 // ---- category detector-pT windows (GeV, on the UE-subtracted reco pT) ------
-// Identical on the data and the response reco side (the invariant that makes
-// the shouldFire turn-on cancel in the unfold).
-inline const char *CatWindowExpr(int cat, const std::string &ptCol)
+// SINGLE definition used by BOTH the data selection (cross_section.cpp) and
+// the response reco side (response.cxx) — that identity is the invariant that
+// makes the shouldFire turn-on cancel in the unfold.
+inline std::string CatWindow(int cat, const std::string &ptCol)
 {
-   static std::string e;
-   if (cat == 2) e = ptCol + " >= 8.4";
-   else if (cat == 1) e = ptCol + " > 8.2";
-   else e = ptCol + " < 22.5";
-   return e.c_str();
+   if (cat == 2) return ptCol + " >= 8.4";
+   if (cat == 1) return ptCol + " > 8.2";
+   return ptCol + " < 22.5";
+}
+
+// Per-category jet gate: the jp_match veto + the window, on either side's
+// branch naming (prefix "" for data, "reco_" for the matching tree).
+inline std::string CatJetGate(int cat, const std::string &prefix, const std::string &ptCol)
+{
+   return prefix + "trigger_match_JP" + std::to_string(cat) + " && " + CatWindow(cat, ptCol);
 }
 
 // Which trigger's measured data-side correction C(pt) applies to a category
@@ -84,24 +93,6 @@ const double kQuoteHi  = 52.0; // 52-86 buffer never inverted, never quoted
 // ratio; 0.014 is the validated light setting if the tail needs damping.
 const double kTikhonovLambda = 0.0;
 
-// ---- per-run promotion prescales -------------------------------------------
-const double kPs0Avg = 117.4, kPs1Avg = 2.450; // lumi-weighted fallback averages
-
-inline std::map<int, std::pair<double, double>> LoadRunPrescales(const AnalysisConfig &cfg)
-{
-   std::map<int, std::pair<double, double>> runPs;
-   std::ifstream fp((cfg.workdir + "../lists/run_prescales.txt").c_str());
-   std::string line;
-   int rid;
-   double p0, p1;
-   while (std::getline(fp, line)) {
-      if (line.empty() || line[0] == '#') continue;
-      std::istringstream ss(line);
-      if (ss >> rid >> p0 >> p1) runPs[rid] = {p0, p1};
-   }
-   return runPs;
-}
-
 // ---- runtime luminosity (same source + badRuns logic as the per-trigger
 // pipeline; the promotion normalizes by the FULL JP2 luminosity) -------------
 inline double RuntimeLeff(const AnalysisConfig &cfg, const std::string &trigger)
@@ -119,6 +110,67 @@ inline double RuntimeLeff(const AnalysisConfig &cfg, const std::string &trigger)
       sum += lumi->GetBinContent(i);
    }
    return sum;
+}
+
+// ---- promotion prescale-recovery weights ------------------------------------
+// The embedding is run-blind, so the response carries the lumi-weighted
+// expected sampling probability of each category over the kept run mix:
+//   1/psN        = Leff(JPN)/Leff(JP2)            (exact, lumi-weighted mean)
+//   <1/(ps0ps1)> = sum_r L_r/(ps0_r ps1_r)/sum L  (union cross term, from the
+//                                                  per-run prescale table)
+struct PromotionWeights {
+   double w0, w1, w2;
+   double LeffFull;
+};
+
+inline PromotionWeights Weights(const AnalysisConfig &cfg)
+{
+   const double L2 = RuntimeLeff(cfg, "JP2"); // JP2 unprescaled == full lumi
+   const double L1 = RuntimeLeff(cfg, "JP1");
+   const double L0 = RuntimeLeff(cfg, "JP0");
+   const double invPs0 = L0 / L2, invPs1 = L1 / L2;
+
+   // Lumi-weighted <1/(ps0*ps1)> over kept runs (per-run ps join per-run L).
+   std::map<int, std::pair<double, double>> runPs;
+   {
+      std::ifstream fp((cfg.workdir + "../lists/run_prescales.txt").c_str());
+      std::string line;
+      int rid;
+      double p0, p1;
+      while (std::getline(fp, line)) {
+         if (line.empty() || line[0] == '#') continue;
+         std::istringstream ss(line);
+         if (ss >> rid >> p0 >> p1) runPs[rid] = {p0, p1};
+      }
+   }
+   double cross = invPs0 * invPs1; // fallback: product of the means
+   {
+      TFile lf((cfg.workdir + "lumi_zilong_full.root").c_str(), "READ");
+      auto *lumi = lf.IsZombie() ? nullptr : (TH1D *)lf.Get("luminosity_JP2");
+      if (lumi && !runPs.empty()) {
+         double num = 0.0, den = 0.0;
+         for (int i = 1; i <= lumi->GetNbinsX(); ++i) {
+            const char *label = lumi->GetXaxis()->GetBinLabel(i);
+            if (!label || !*label) continue;
+            const int run = std::stoi(label);
+            if (std::find(cfg.badRuns.begin(), cfg.badRuns.end(), run) != cfg.badRuns.end())
+               continue;
+            auto it = runPs.find(run);
+            if (it == runPs.end()) continue;
+            const double L = lumi->GetBinContent(i);
+            num += L / (it->second.first * it->second.second);
+            den += L;
+         }
+         if (den > 0) cross = num / den;
+      }
+   }
+
+   PromotionWeights w;
+   w.w0 = invPs0;
+   w.w1 = invPs0 + invPs1 - cross;
+   w.w2 = 1.0;
+   w.LeffFull = L2;
+   return w;
 }
 
 } // namespace PromotionConfig

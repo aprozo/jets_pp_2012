@@ -35,11 +35,13 @@
 #include "../soft_reweight.h"
 #include "../vertex_reweight.h"
 
+#include <TRandom.h>
+
 using namespace CrossSectionConfig;
 using namespace PromotionConfig;
 AnalysisConfig cfg;
 
-static void build_fine(const std::string &jetR)
+static void build_fine(const std::string &jetR, const Systematic &syst)
 {
    ROOT::EnableImplicitMT(kImtThreads);
 
@@ -50,21 +52,11 @@ static void build_fine(const std::string &jetR)
    }
    const char *MCPT = "mc_pt_corrected"; // paper truth axis (UE-subtracted particle pT)
 
-   const auto runPs = LoadRunPrescales(cfg);
-   std::cout << "[jpx] per-run prescales loaded: " << runPs.size() << " runs "
-             << "(fallback ps0=" << kPs0Avg << " ps1=" << kPs1Avg << ")" << std::endl;
-
-   auto w0run = [runPs](int rid) {
-      auto it = runPs.find(rid);
-      const double p0 = (it != runPs.end()) ? it->second.first : kPs0Avg;
-      return 1.0 / p0;
-   };
-   auto w1run = [runPs](int rid) {
-      auto it = runPs.find(rid);
-      const double p0 = (it != runPs.end()) ? it->second.first : kPs0Avg;
-      const double p1 = (it != runPs.end()) ? it->second.second : kPs1Avg;
-      return 1.0 / p0 + 1.0 / p1 - 1.0 / (p0 * p1);
-   };
+   // Lumi-weighted expected sampling probabilities over the kept run mix (the
+   // embedding is run-blind — its runid is a production timestamp).
+   const PromotionWeights W = Weights(cfg);
+   std::cout << "[jpx] promotion weights: w0=" << W.w0 << "  w1=" << W.w1 << "  w2=" << W.w2
+             << "  (Leff full=" << W.LeffFull << " pb^-1)" << std::endl;
 
    ROOT::RDataFrame rawJets(std::string("MatchedTree"), std::string(inputFile.Data()));
 
@@ -74,20 +66,36 @@ static void build_fine(const std::string &jetR)
    // sits in the truth selections, the reco acceptance |reco_det_eta|<0.5 in
    // reco_in — a pair with only one side in acceptance contributes exactly
    // where it belongs (background via b, or miss via x).
-   auto allJets =
+   auto base =
       rawJets
          .Define("vertex_weight", [](double vz) { return VertexReweight::weight(vz); }, {"event_vz"})
          .Define("soft_weight", [](double pthat) { return SoftReweight::weight(pthat); }, {"pthat_mid"})
-         .Define("total_weight", "mc_weight * vertex_weight * soft_weight")
+         .Define("total_weight", "mc_weight * vertex_weight * soft_weight");
+
+   // JES/JER shape systematic: shift/smear the RECONSTRUCTED pT the response
+   // maps (windows + fills use reco_pt_s). Nominal is a plain alias, so the
+   // nominal ingredients are bit-identical.
+   ROOT::RDF::RNode shifted = syst.needsResponse()
+      ? base.DefineSlot("reco_pt_s",
+                        [jes = syst.jesShift, jer = syst.jerSmear](unsigned int, double rpt) -> double {
+                           if (rpt < -500.0) return rpt;
+                           double f = 1.0 + jes;
+                           if (jer > 0.0) f += gRandom->Gaus(0.0, jer);
+                           return rpt * f;
+                        },
+                        {"reco_pt"})
+      : base.Define("reco_pt_s", "reco_pt");
+
+   const std::string recoGate = "reco_pt_s > -500 && std::abs(reco_det_eta) < 0.5 && "
+                                "reco_neutral_fraction < 0.95 && ("
+                                "(rcat==2 && " + CatJetGate(2, "reco_", "reco_pt_s") + ") || "
+                                "(rcat==1 && " + CatJetGate(1, "reco_", "reco_pt_s") + ") || "
+                                "(rcat==0 && " + CatJetGate(0, "reco_", "reco_pt_s") + "))";
+   auto allJets =
+      shifted
          .Define("rcat", "evt_should_JP2 ? 2 : (evt_should_JP1 ? 1 : (evt_should_JP0 ? 0 : -1))")
-         .Define("reco_in", "reco_pt > -500 && std::abs(reco_det_eta) < 0.5 && "
-                            "reco_neutral_fraction < 0.95 && "
-                            "((rcat==2 && reco_trigger_match_JP2 && reco_pt >= 8.4) || "
-                            "(rcat==1 && reco_trigger_match_JP1 && reco_pt > 8.2) || "
-                            "(rcat==0 && reco_trigger_match_JP0 && reco_pt < 22.5))")
-         .Define("w0r", w0run, {"runid"})
-         .Define("w1r", w1run, {"runid"})
-         .Define("wcat", "rcat==2 ? 1.0 : (rcat==1 ? w1r : (rcat==0 ? w0r : 0.0))")
+         .Define("reco_in", recoGate)
+         .Define("wcat", Form("rcat==2 ? 1.0 : (rcat==1 ? %.10g : (rcat==0 ? %.10g : 0.0))", W.w1, W.w0))
          .Define("meas_w", "total_weight * wcat");
 
    const char *truthSel = "mc_pt > -500 && std::abs(mc_eta) < 0.5";
@@ -97,15 +105,15 @@ static void build_fine(const std::string &jetR)
 
    auto hA_w = matched.Histo2D({"A_fine", ";reco;mc", kNRecoFine, kRecoFineLo, kRecoFineHi,
                                 kNMcFine, kMcFineLo, kMcFineHi},
-                               "reco_pt", MCPT, "meas_w");
+                               "reco_pt_s", MCPT, "meas_w");
    auto hA_e = matched.Histo2D({"A_entries_fine", ";reco;mc", kNRecoFine, kRecoFineLo, kRecoFineHi,
                                 kNMcFine, kMcFineLo, kMcFineHi},
-                               "reco_pt", MCPT);
+                               "reco_pt_s", MCPT);
    auto hA_x = matched.Histo2D({"A_xfine", ";reco;mc", kNRecoFine, kRecoFineLo, kRecoFineHi,
                                 kNMcFine, kMcFineLo, kMcFineHi},
-                               "reco_pt", MCPT, "total_weight");
-   auto hB_w = recoAll.Histo1D({"b_fine", "", kNRecoFine, kRecoFineLo, kRecoFineHi}, "reco_pt", "meas_w");
-   auto hB_e = recoAll.Histo1D({"b_entries_fine", "", kNRecoFine, kRecoFineLo, kRecoFineHi}, "reco_pt");
+                               "reco_pt_s", MCPT, "total_weight");
+   auto hB_w = recoAll.Histo1D({"b_fine", "", kNRecoFine, kRecoFineLo, kRecoFineHi}, "reco_pt_s", "meas_w");
+   auto hB_e = recoAll.Histo1D({"b_entries_fine", "", kNRecoFine, kRecoFineLo, kRecoFineHi}, "reco_pt_s");
    auto hX_w = truthAll.Histo1D({"x_fine", "", kNMcFine, kMcFineLo, kMcFineHi}, MCPT, "total_weight");
    auto hX_e = truthAll.Histo1D({"x_entries_fine", "", kNMcFine, kMcFineLo, kMcFineHi}, MCPT);
 
@@ -114,7 +122,8 @@ static void build_fine(const std::string &jetR)
    auto nCat1 = allJets.Filter("reco_in && rcat==1").Count();
    auto nCat0 = allJets.Filter("reco_in && rcat==0").Count();
 
-   const TString outName = Form("%sresponse_JPX_R%s_fine.root", cfg.workdir.c_str(), jetR.c_str());
+   const TString outName = Form("%sresponse_JPX_R%s_fine%s.root", cfg.workdir.c_str(), jetR.c_str(),
+                                SystTag(syst).c_str());
    TFile fout(outName, "RECREATE");
    hA_w->Write();
    hA_e->Write();
@@ -123,9 +132,10 @@ static void build_fine(const std::string &jetR)
    hB_e->Write();
    hX_w->Write();
    hX_e->Write();
-   TNamed("prescale_source", Form("run_prescales.txt (%zu runs), fallback ps0=%g ps1=%g",
-                                  runPs.size(), kPs0Avg, kPs1Avg))
+   TNamed("promotion_weights", Form("w0=%.6g w1=%.6g w2=%.6g (lumi-weighted, Leff=%.4f)", W.w0, W.w1,
+                                    W.w2, W.LeffFull))
       .Write();
+   StampProvenance(syst);
    fout.Close();
 
    std::cout << "[jpx] response ingredients written: " << outName << std::endl;
@@ -133,8 +143,13 @@ static void build_fine(const std::string &jetR)
              << std::endl;
 }
 
-void response()
+// systName selects a preset from config.h::Systematics(); the nominal path is
+// bit-identical to a build without the argument. A shape systematic writes
+// response_JPX_R<R>_fine_<name>.root.
+void response(const char *systName = "nominal")
 {
+   const Systematic syst = FindSystematic(systName);
+   std::cout << "[jpx] systematic = " << syst.name << std::endl;
    for (const auto &jetR : cfg.jetRs)
-      build_fine(jetR);
+      build_fine(jetR, syst);
 }
