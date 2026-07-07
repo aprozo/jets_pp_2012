@@ -41,25 +41,40 @@ static void combine_one(const std::string &trig)
    std::vector<double> up(nb + 1, 0.0), dn(nb + 1, 0.0);
 
    const TString pref = Form("xsec_%s_R0.5_", trig.c_str());  // nominal ("...R0.5.root") does NOT match
-   const TString band = Form("xsec_%s_R0.5_systband.root", trig.c_str());
    TSystemDirectory sdir(dir.c_str(), dir.c_str());
    TList *files = sdir.GetListOfFiles();
    if (files) {
       TIter next(files);
       while (TObject *o = next()) {
          TString fn = o->GetName();
-         if (!fn.BeginsWith(pref) || !fn.EndsWith(".root") || fn == band) continue;
+         if (!fn.BeginsWith(pref) || !fn.EndsWith(".root")) continue;
          TFile *fv = TFile::Open(Form("%s%s", dir.c_str(), fn.Data()));
          if (!fv || fv->IsZombie()) continue;
          TH1D *hv = (TH1D *)fv->Get("canonical");
          TNamed *prov = (TNamed *)fv->Get("variation");
+         // Gate on provenance, not on the filename: only files stamped with a
+         // variation that is CURRENTLY in config.h::Systematics() enter the
+         // band. This keeps out the solver cross-check (xsec_*_invert.root,
+         // no stamp), the band file itself, and stale files from variations
+         // that were since removed from the matrix.
+         bool known = false;
+         if (prov) {
+            const std::string vname = prov->GetTitle();
+            for (const auto &s : Systematics())
+               if (s.name == vname && vname != "nominal") { known = true; break; }
+         }
+         if (!known) {
+            if (hv) printf("  - skipped %s (no/unknown variation stamp)\n", fn.Data());
+            fv->Close();
+            continue;
+         }
          if (hv) {
             for (int b = 1; b <= nb; ++b) {
                const double d = hv->GetBinContent(b) - nom->GetBinContent(b);
                if (d > 0) up[b] = std::sqrt(up[b] * up[b] + d * d);
                else       dn[b] = std::sqrt(dn[b] * dn[b] + d * d);
             }
-            printf("  + %s (variation=%s)\n", fn.Data(), prov ? prov->GetTitle() : "?");
+            printf("  + %s (variation=%s)\n", fn.Data(), prov->GetTitle());
          }
          fv->Close();
       }
