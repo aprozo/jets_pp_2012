@@ -38,6 +38,21 @@ const std::string kDataPath = "/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jet
 const int kNIter      = 2; // RooUnfoldBayes iterations (validated: no rising tail)
 const int kImtThreads = 4; // bounded IMT (unbounded IMT over gpfs on >4GB trees segfaults)
 
+// Detector-eta acceptance of the measurement. CONVENTION: a FIXED window
+// |eta_det| < kDetEtaMax at every radius (the cut hardcoded in every
+// selection), so the d^2sigma/dpT/deta normalization divides by 2*kDetEtaMax,
+// radius-independent. Jets stay fully contained in the BEMC (|eta|<1) for
+// every R <= 0.5: constituents reach |eta| <= kDetEtaMax + R <= 1.0, with
+// GROWING margin at smaller R — and the identical window across radii keeps
+// R-dependence ratios in the same phase space. At R=0.5 this coincides
+// exactly with the full-containment convention |eta_det| < 1-R and its
+// 2*(1-R) normalization; at other radii the two conventions differ and the
+// cut and the normalization MUST be changed together (switching to the
+// scaling-window convention means widening every eta cut to 1-R and
+// re-measuring the trigger corrections on that window).
+const double kDetEtaMax = 0.5;
+inline double EtaAcceptance() { return 2.0 * kDetEtaMax; }
+
 // Allocate the custom ROOT color slots used throughout the analysis.
 inline void DefineCustomColors()
 {

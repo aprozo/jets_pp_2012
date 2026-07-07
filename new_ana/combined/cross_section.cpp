@@ -616,7 +616,7 @@ void cross_section(const char *systName = "nominal", double lambdaOverride = -1.
       }
 
       // ---- normalize ---------------------------------------------------------
-      h->Scale(1.0 / (2.0 * (1.0 - std::stod(jetR)))); // eta acceptance
+      h->Scale(1.0 / EtaAcceptance()); // |eta_det| < kDetEtaMax, radius-independent
       for (int i = 1; i <= h->GetNbinsX(); ++i) {
          const double w = h->GetBinWidth(i);
          h->SetBinContent(i, h->GetBinContent(i) / w);

@@ -258,8 +258,8 @@ private:
 
    void NormBinWidthAndAcc()
    {
-      // eta acceptance
-      h->Scale(1.0 / (2.0 * (1.0 - std::stod(jetR))));
+      // eta acceptance |eta_det| < kDetEtaMax (radius-independent)
+      h->Scale(1.0 / EtaAcceptance());
       // pt bin width
       for (int i = 1; i <= h->GetNbinsX(); ++i) {
          const double w = h->GetBinWidth(i);
