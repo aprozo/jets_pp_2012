@@ -39,8 +39,10 @@ the data and the response.
    `M_ij = (b_i/matched_i) · A_ij/x_j`
    folds fakes (b/matched ≥ 1) and matching+trigger efficiency (A/x) into one
    matrix.
-5. **Floor-restricted inversion.** The square block [9.7, 86) is inverted
-   directly (`x = M⁻¹ b`); the 52-86 buffer is solved but never quoted;
+5. **Floor-restricted inversion.** The square block [8.2, 86) is inverted
+   directly (`x = M⁻¹ b`) — the block extends exactly as far down as the
+   MEASURED C_JPX (below 8.2 the fired_JP0 base cannot measure it and the
+   6.9-8.2 bin rings). The 52-86 buffer is solved but never quoted;
    below-floor feed-up is background-scaled away by the b/matched row factor.
    Optional scale-matched second-difference Tikhonov damping
    (`promotion.h::kTikhonovLambda`, 0 = Dmitry's plain inverse; the "jpxDamp"
@@ -74,9 +76,11 @@ bash run_jpx.sh cross_section    # filter/floor/lambda studies (no tree re-read)
 
 ## Notes
 
-* The quoted combination starts at the block floor (9.7 GeV by default). The
-  6.9–9.7 bins are covered by cat0 but are prescale-deep; lowering
-  `kJpxFloor` is a study, not the default.
+* The quoted combination starts at the block floor (8.2 GeV — where the
+  measured C_JPX begins). The 6.9–8.2 bin is covered by cat0 but the
+  correction is unmeasurable there (prescale-starved base) and the bin rings;
+  solving from 6.9 is a study (`cross_section("nominal", -1, 6.9)`), not the
+  default.
 * Quoted errors are data-statistical (X = R·diag(σ_b²)·Rᵀ). The
   embedding-statistical component is small (55M matched rows) and enters the
   systematics as the response-variation band instead.

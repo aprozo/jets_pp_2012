@@ -114,10 +114,11 @@ const int    kBoxThresh = 4;  // zero cells whose box entry-sum is <= 4
 
 // ---- floor-restricted inversion block --------------------------------------
 // The square block inverted runs from the first McBins bin at or above
-// kJpxFloor up to (excluding) kQuoteHi. 9.7 GeV is the validated default; the
-// combination is populated down to 6.9 via cat0 but those prescale-deep bins
-// can make the unregularized inverse ring — study by editing here.
-const double kJpxFloor = 9.7;
+// kJpxFloor up to (excluding) kQuoteHi. 8.2 GeV: the block extends exactly as
+// far down as the MEASURED C_JPX (JpxTrigEff is bin-by-bin from 8.2; below,
+// the fired_JP0 base is too prescale-starved to measure it and the 6.9-8.2
+// bin rings in the unregularized inverse — solve from 6.9 only as a study).
+const double kJpxFloor = 8.2;
 const double kQuoteHi  = 86.0; // include the 52-86 feed-down buffer as a real
                                // solved column/row (its reco row is real data,
                                // 52-80); solved, never quoted. With the buffer

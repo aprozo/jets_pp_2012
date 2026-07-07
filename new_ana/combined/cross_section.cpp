@@ -113,15 +113,16 @@ static std::vector<std::vector<double>> boxconv2d(const std::vector<std::vector<
 static std::unique_ptr<TH1D> RawCombined(const std::string &jetR, const Systematic &syst)
 {
    const std::vector<double> &bins = McBins();
-   const std::string cachePath =
-      Form("%sdata_JPX_R%s_categories.root", cfg.workdir.c_str(), jetR.c_str());
 
    // The UE-fraction variation changes every jet's pT (windows + spectrum), so
-   // it cannot be served from the nominal cache: bypass (and do not overwrite).
+   // it gets its OWN cache file keyed on the fraction.
    const bool ueVar = std::abs(syst.ueFraction - 1.0) > 1e-9;
+   const std::string cachePath =
+      Form("%sdata_JPX_R%s_categories%s.root", cfg.workdir.c_str(), jetR.c_str(),
+           ueVar ? Form("_ue%.2f", syst.ueFraction) : "");
 
    TH1D *cat[3] = {nullptr, nullptr, nullptr};
-   if (!ueVar && !gSystem->AccessPathName(cachePath.c_str())) {
+   if (!gSystem->AccessPathName(cachePath.c_str())) {
       TFile fc(cachePath.c_str(), "READ");
       for (int c = 0; c < 3; ++c) {
          auto *h = (TH1D *)fc.Get(Form("jpx_cat%d", c));
@@ -182,7 +183,7 @@ static std::unique_ptr<TH1D> RawCombined(const std::string &jetR, const Systemat
       auto h1 = d0.Histo1D({"jpx_cat1", "", (int)bins.size() - 1, bins.data()}, "pt1");
       auto h0 = d0.Histo1D({"jpx_cat0", "", (int)bins.size() - 1, bins.data()}, "pt0");
 
-      if (!ueVar) {
+      {
          TFile fc(cachePath.c_str(), "RECREATE");
          h0->Write("jpx_cat0");
          h1->Write("jpx_cat1");
@@ -541,12 +542,23 @@ void cross_section(const char *systName = "nominal", double lambdaOverride = -1.
          TMatrixD Areg = MtW * Mm;
          TMatrixD pen = Dinv * (Lt * L) * Dinv;
          Areg += (tikLambda * tikLambda) * pen;
+         // Condition the normal system: its natural scale is M^2/b^2 ~ 1e-14
+         // and TDecompLU flags diagonals below an ABSOLUTE 2.2e-16 tolerance
+         // as singular. Scaling the whole system by a common factor leaves
+         // R = (s Areg)^-1 (s MtW) = Areg^-1 MtW invariant.
+         double dmax = 0.0;
+         for (int a = 0; a < nfloor; ++a) dmax = std::max(dmax, std::abs(Areg(a, a)));
+         const double s = (dmax > 0) ? 1.0 / dmax : 1.0;
+         TMatrixD AregS = Areg;
+         AregS *= s;
+         TMatrixD MtWS = MtW;
+         MtWS *= s;
          Double_t det = 0.0;
-         TMatrixD AregInv(Areg);
+         TMatrixD AregInv(AregS);
          AregInv.Invert(&det);
          if (det == 0.0)
             std::cerr << "[jpx][WARN] regularized normal matrix singular" << std::endl;
-         Rr = AregInv * MtW;
+         Rr = AregInv * MtWS;
          return Rr;
       };
 
