@@ -36,7 +36,7 @@ enum class EVENTRESULT {
 class ppParameters {
 
 public:
-   double R = 0.4; ///< Resolution parameter ("radius").
+   double R = 0.6; ///< Resolution parameter ("radius").
 
    /// Jet algorithm for the original jets
    JetAlgorithm LargeJetAlgorithm = fastjet::antikt_algorithm;
@@ -57,14 +57,10 @@ public:
    // int GhostRepeat = 1;
    // float GhostArea = 0.005;    ///< ghost area
 
-   // const double PtJetMin = 20.0;    ///< Min jet pT
    double PtJetMin = 5.0;    ///< Min jet pT
    double PtJetMax = 1000.0; ///< Max jet pT
-   double MJetMin = 0.0;
-   // double LeadPtMin=5.0;                 ///< leading jet minimum
-   // p<SUB>T</SUB>
 
-   double MaxJetNEF = 0.95; ///< Max neutral energy fraction
+   double MaxJetNEF = 0.95; ///< Jet R_T = sum_pT_tower / sum_pT_jet < 0.95 (analysis note Table 4)
 
    double EtaConsCut = 1.0; ///< Constituent |&eta;| acceptance || was 1.0
    double PtConsMin = 0.2;  ///< Constituent pT minimum || was 0.2
@@ -73,17 +69,37 @@ public:
    double RefMultCut = 0; ///< Reference multiplicity. Needs to be rethought to
                           ///< accomodate pp and AuAu
 
-   double VzCut = 50; ///< Vertex z
+   double VzCut = 60; ///< Vertex z (matches Dmitry's default min/max_vertex_z = -60..+60)
    // const double VzDiffCut=6;         ///< |Vz(TPC) - Vz(VPD)| <-- NOT WORKING
    // in older data (no VPD)
    double VzDiffCut = 99999; ///< |Vz(TPC) - Vz(VPD)|
 
-   double DcaCut = 1.5;               ///< track dca || was 3.0
-   double sDCAxyCut = 0.5;            ///< signed dca_xy
-   double NMinFit = 15;               ///< minimum number of fit points for tracks || was 15
-   double FitOverMaxPointsCut = 0.52; ///< NFit / NFitPossible || was 0.52
+   double DcaCut = 3.0;               ///< flat 3-D DCA cap |dcaGlobal().mag()| < 3 cm, WITH z (Dmitry: 3.0); applied by reader SetDCACut
+   double sDCAxyCut = 99999;          ///< |signed dca_xy| flat cap (kept off — TdcaPtDep below replaces it)
+   double NMinFit = 12;               ///< minimum number of fit points for tracks (Dmitry: 12)
+   double FitOverMaxPointsCut = 0.51; ///< NFit / NFitPossible (Dmitry: 0.51)
 
-   double HadronicCorr = 0.9999; ///< Fraction of hadronic correction
+   /// Minimum track flag. Dmitry's StjTrackCutFlag(0) rejects flag<=0
+   /// (i.e. requires flag > 0). Pico maker default is flag>=0.
+   int FlagMin = 1;
+
+   /// pT-dependent cut on the FULL 3-D DCA (dcaGlobal().mag() = track->GetDCA()),
+   /// matching Dmitry's Run12 StjTrackCutTdcaPtDependent and the PUBLISHED pp200
+   /// note (Table 2):
+   ///   DCA < 2 cm                 for pt < 0.5 GeV
+   ///       < 2.5 cm - pt*(1/GeV)  for 0.5 <= pt < 1.5 GeV   (slope -1)
+   ///       < 1 cm                 for pt >= 1.5 GeV
+   /// i.e. pt1=0.5, dca1=2.0, pt2=1.5, dca2=1.0. (StjTrackCutTdcaPtDependent's
+   /// "Tdca" is the 3-D magnitude, NOT the transverse dca_xy; StjTPCMuDst.cxx:100.
+   /// The dca_xy / transverse twin StjTrackCutDcaPtDependent ships pt2=1.0 and is
+   /// what Dmitry used for run9 pp200, NOT run12 — this repo follows run12.)
+   bool   ApplyTdcaPtDep = true;
+   double TdcaPt1     = 0.5;
+   double TdcaPt2     = 1.5;
+   double TdcaDcaMax1 = 2.0;
+   double TdcaDcaMax2 = 1.0;
+
+   double HadronicCorr = 1.0; ///< Fraction of hadronic correction (Dmitry: 1.00)
 
    double FakeEff = 1.0; ///< fake efficiency for systematics. 0.95 is a reasonable example.
 
@@ -95,15 +111,23 @@ public:
 
    // ************************************
    // Do NOT cut high tracks and towers!
-   // Instead, reject the whole event when
-   // of these is found
+   // Instead, reject only the affected jet (per-jet, à la Dmitry's
+   // make_max_track_pt_cut). Event-level rejection produced a sharp
+   // cliff at reco jet pT ≈ 30 GeV in the JP2/all efficiency.
    // ************************************
    double MaxEtCut = 1000;   ///< tower ET cut
    double MaxTrackPt = 1000; ///< track pT cut
 
-   // EVENT rejection cuts
-   double MaxEventPtCut = 30; ///< max track pT cut for event
-   double MaxEventEtCut = 30; ///< max tower ET cut for event
+   // EVENT rejection cuts — match Dmitry's per-event vetoes
+   // (StJetPlots/StJetCut.h:make_max_track_pt_cut, default.nix:24).
+   // A charged track with pt > MaxEventPtCut rejects the entire event.
+   double MaxEventPtCut = 1000;   ///< Dmitry: 30 GeV
+   double MaxEventEtCut = 1000; ///< Dmitry has no event-level tower cut
+
+   // Per-jet rejection: drop the jet (keep the event) if any charged
+   // constituent has pT > this. Disabled (set to a huge value) because
+   // event-level cut above already removes such events.
+   double MaxJetTrackPt = 30;
    double MinEventEtCut = 0;  ///< min event ET cut for event
    double ManualHtCut = 0.0;  ///< necessary for some embedding picos. Should
                               ///< always equal MinEventEtCut

@@ -61,15 +61,18 @@ int main(int argc, const char **argv)
 
    if (pReader) {
       TStarJetPicoTowerCuts *towerCuts = pReader->GetTowerCuts();
+      // Full ~200-tower isaac hot/dead mask — approximates Dmitry's
+      // StjTowerEnergyCutBemcStatus(1) DB mask, which he applies IN ADDITION
+      // to the explicit 3407 (StjTowerEnergyCutTowerId). The 2026-06-12
+      // 3407-only production PROVED the mask is load-bearing: without it,
+      // hot-tower fakes (absent in embedding) produce rising tails — JP2
+      // 1.41 at 40.6 / 1.95 at 48 GeV, HT2 (tower-triggered) 1.56 / 2.33.
+      // ("lists/badtower_3407.list" kept for the minimal-mask systematic.)
       towerCuts->AddBadTowers("lists/Combined_pp200Y12_badtower_isaac.list");
 
-      TString csvfile = "lists/pp200Y12_badrun_isaac.list";
-      vector<int> badruns;
-      if (readinbadrunlist(badruns, csvfile) == false) {
-         cerr << "Problems reading bad run list" << endl;
-         return -1;
-      }
-      pReader->AddMaskedRuns(badruns);
+      // Bad-run masking disabled: accept all runs in the pico list.
+      // Dmitry-aligned filtering is applied downstream in
+      // cross_section.cpp via dmitry_extras.list.
    }
 
    // File
@@ -83,18 +86,10 @@ int main(int argc, const char **argv)
    hEventCounter->GetXaxis()->SetBinLabel(4, "NOJETS");
    hEventCounter->GetXaxis()->SetBinLabel(5, "NOCONSTS");
 
-   TString csvfile = "lists/good_run_list.list";
-   vector<int> goodruns;
-   if (readinbadrunlist(goodruns, csvfile) == false) {
-      cerr << "Problems reading good run list" << endl;
-      return -1;
-   }
-
-   TH1D *hEventsRun = new TH1D("hEventsRun", "Events per run", goodruns.size(), 0, goodruns.size());
-   // set names of bins to run numbers
-   for (unsigned int i = 0; i < goodruns.size(); ++i) {
-      hEventsRun->GetXaxis()->SetBinLabel(i + 1, Form("%d", goodruns[i]));
-   }
+   // Good-run list disabled: hEventsRun auto-grows as new run labels
+   // appear via Fill(label, w). Bins/labels populated at runtime.
+   TH1D *hEventsRun = new TH1D("hEventsRun", "Events per run", 1, 0, 1);
+   hEventsRun->SetCanExtend(TH1::kAllAxes);
 
    // Save results
    // ------------
@@ -109,6 +104,13 @@ int main(int argc, const char **argv)
    ResultTree->Branch("eventid", &eventid, "eventid/I");
    bool isTriggerEvent;
    ResultTree->Branch("isTriggerEvent", &isTriggerEvent, "isTriggerEvent/O");
+   // Per-event JP fire flags (real prescale-accepted hardware bits in data).
+   // Basis of the independent-trigger analysis: filter fired_<T>, normalize by
+   // the trigger's SAMPLED lumi (JP1 7.122, JP0 0.1486 pb^-1).
+   bool fired_JP0, fired_JP1, fired_JP2;
+   ResultTree->Branch("fired_JP0", &fired_JP0, "fired_JP0/O");
+   ResultTree->Branch("fired_JP1", &fired_JP1, "fired_JP1/O");
+   ResultTree->Branch("fired_JP2", &fired_JP2, "fired_JP2/O");
    double weight;
    ResultTree->Branch("weight", &weight, "weight/D");
    double refmult;
@@ -117,6 +119,11 @@ int main(int argc, const char **argv)
    ResultTree->Branch("njets", &njets, "njets/I");
    int mult;
    ResultTree->Branch("mult", &mult, "mult/I");
+   // Primary vertex z (cm).  Needed downstream for vertex-z reweighting,
+   // i.e. the user-side analogue of Dmitry's
+   // SetVertexReweightingParams("embedding_tpc_vertex", ...).
+   double vz;
+   ResultTree->Branch("vz", &vz, "vz/D");
    float event_sum_pt;
    ResultTree->Branch("event_sum_pt", &event_sum_pt, "event_sum_pt/F");
 
@@ -124,9 +131,28 @@ int main(int argc, const char **argv)
    ResultTree->Branch("Jets", &Jets);
    double neutral_fraction[1000];
    ResultTree->Branch("neutral_fraction", neutral_fraction, "neutral_fraction[njets]/D");
+   int lead_tower_id[1000];
+   ResultTree->Branch("lead_tower_id", lead_tower_id, "lead_tower_id[njets]/I");
+   // Near-max JP-patch ADC in the jet's box (-1 if none). QA/provenance probe:
+   // degenerate-data signature = trigger_match_JP2 && jp_patch_adc<=36 events.
+   int jp_patch_adc[1000];
+   ResultTree->Branch("jp_patch_adc", jp_patch_adc, "jp_patch_adc[njets]/I");
 
+   // IsMatchedJP() returns the JP-match for whichever JP-trigger family was
+   // selected via the -trig flag (JP0/JP1/JP2 — see match_jp dispatch on
+   // pars.TriggerName.Contains in ppAnalysis.cxx). Expose the same data
+   // under the three explicit branch names so downstream (matching.cpp,
+   // unfolding/, cross_section.cpp) can filter via
+   //   reco_trigger_match_<TRIG>
+   // regardless of which JP-family was active. All three branches carry
+   // identical content per run; the trigger map (-trig JP1 vs JP2) sets
+   // WHICH JP family is the active match.
    bool trigger_match_JP2[1000];
    ResultTree->Branch("trigger_match_JP2", trigger_match_JP2, "trigger_match_JP2[njets]/O");
+   bool trigger_match_JP1[1000];
+   ResultTree->Branch("trigger_match_JP1", trigger_match_JP1, "trigger_match_JP1[njets]/O");
+   bool trigger_match_JP0[1000];
+   ResultTree->Branch("trigger_match_JP0", trigger_match_JP0, "trigger_match_JP0[njets]/O");
    bool trigger_match_HT2[1000];
    ResultTree->Branch("trigger_match_HT2", trigger_match_HT2, "trigger_match_HT2[njets]/O");
    double pt[1000];
@@ -139,6 +165,22 @@ int main(int argc, const char **argv)
    ResultTree->Branch("n_constituents", n_constituents, "n_constituents[njets]/I");
    int index[1000];
    ResultTree->Branch("index", index, "index[njets]/I");
+
+   // Jet area + UE density via off-axis cones (R= -R) + UE-subtracted pT.
+   //   pt_corrected = pt - bg_density * jet_area
+   double jet_area[1000];
+   ResultTree->Branch("jet_area", jet_area, "jet_area[njets]/D");
+   double bg_density[1000];
+   ResultTree->Branch("bg_density", bg_density, "bg_density[njets]/D");
+   double pt_corrected[1000];
+   ResultTree->Branch("pt_corrected", pt_corrected, "pt_corrected[njets]/D");
+
+   // Detector-frame jet eta (Pibero / Dmitry's StJetCandidate::detEta).
+   // detEta is the jet eta projected from origin (0,0,0) to BEMC radius 225.405 cm.
+   // Required for the detector-level |detEta| < 0.5 cut that mirrors
+   // Dmitry's make_detector_level_cut. Formula: asinh(sinh(eta_phys) + vz/225.405).
+   double det_eta[1000];
+   ResultTree->Branch("det_eta", det_eta, "det_eta[njets]/D");
 
    // Helpers
    TStarJetVector *sv;
@@ -199,13 +241,37 @@ int main(int argc, const char **argv)
          // Now we can pull out details and results
          // ---------------------------------------
          isTriggerEvent = ppana->IsTriggerEvent();
+         fired_JP0 = ppana->FiredJP0();
+         fired_JP1 = ppana->FiredJP1();
+         fired_JP2 = ppana->FiredJP2();
          runid = ppana->GetRunid();
-         hEventsRun->Fill(Form("%i", runid1), 1);
+         // Luminosity bookkeeping: count events that were *actually analyzed for
+         // the spectrum* — i.e. that pass the analysis trigger filter
+         // (didFire AND shouldFire — see the `simu_fired` block in
+         // ppAnalysis.cxx) and weren't otherwise rejected (Vz, ranking, ...).
+         // The cross section is computed downstream as
+         //     runLumi = (hEventsRun / lumi.root::nevents_<TRIG>) × lumi_<TRIG>
+         // so hEventsRun must count events using the same definition that
+         // nevents_<TRIG> does for STAR-recorded JP2 events. Hot-tower-only
+         // triggers fire the hardware (didFire=true) but the simulator with
+         // bad-tower mask disagrees (shouldFire=false); they're *recorded* in
+         // nevents_<TRIG> but not analyzed for the spectrum, so they belong
+         // in neither the numerator nor here.
+         //
+         // For MC (`intype == MCPICO`) there is no hardware trigger to filter
+         // on, so we fall back to the original behaviour and fill hEventsRun
+         // for every event reaching this point.
+         const bool keep_for_lumi = (pars.intype == MCPICO)
+                                  || (isTriggerEvent && ret != EVENTRESULT::NOTACCEPTED);
+         if (keep_for_lumi) {
+            hEventsRun->Fill(Form("%i", runid1), 1);
+         }
 
          weight = ppana->GetEventWeight();
          refmult = ppana->GetRefmult();
          eventid = ppana->GetEventid();
          mult = ppana->GetEventMult();
+         vz = ppana->GetVz();
          event_sum_pt = ppana->GetEventSumPt();
 
          // if (pars.InputName.Contains("hat") && pars.intype == INPICO &&
@@ -223,14 +289,31 @@ int main(int argc, const char **argv)
             TStarJetVector sv = TStarJetVector(MakeTLorentzVector(gr.orig));
             new (Jets[ijet]) TStarJetVectorJet(sv);
             neutral_fraction[ijet] = gr.orig.user_info<JetAnalysisUserInfo>().GetNumber();
-            trigger_match_JP2[ijet] = gr.orig.user_info<JetAnalysisUserInfo>().IsMatchedJP();
-            trigger_match_HT2[ijet] = gr.orig.user_info<JetAnalysisUserInfo>().IsMatchedHT();
+            lead_tower_id[ijet]    = gr.orig.user_info<JetAnalysisUserInfo>().GetLeadTowerId();
+            // Per-threshold JP-patch matches (isJP0/isJP1/isJP2 separately) — NOT
+            // degenerate. Required for genuine per-trigger gates downstream.
+            // (The old code copied one matched_jp flag into all three branches —
+            // that degeneracy inflated the JP2 trigger efficiency ~2.8x and bent
+            // the spectrum; see CLAUDE.md provenance gotchas.)
+            const auto &ui = gr.orig.user_info<JetAnalysisUserInfo>();
+            trigger_match_JP2[ijet] = ui.IsMatchedJP2();
+            trigger_match_JP1[ijet] = ui.IsMatchedJP1();
+            trigger_match_JP0[ijet] = ui.IsMatchedJP0();
+            trigger_match_HT2[ijet] = ui.IsMatchedHT();
+            jp_patch_adc[ijet]      = ui.GetJpAdc();
 
             vector<PseudoJet> constituents = sorted_by_pt(gr.orig.constituents()); // sort by pt
             ptLead[ijet] = constituents[0].pt();
             pt[ijet] = gr.orig.perp();
             n_constituents[ijet] = gr.orig.constituents().size();
             index[ijet] = ijet;
+            jet_area[ijet]     = gr.area;
+            bg_density[ijet]   = gr.bg_density;
+            pt_corrected[ijet] = gr.pt_corrected;
+            // detector-frame jet eta (BEMC front-face projection from origin):
+            //   detEta = asinh(sinh(eta_phys) + vz / 225.405)
+            // mirrors StJetCandidate::detEta(vertex) at BEMC_RADIUS = 225.405 cm.
+            det_eta[ijet] = std::asinh(std::sinh(gr.orig.eta()) + vz / 225.405);
             ijet++;
          }
 

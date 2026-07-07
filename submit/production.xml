@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<!-- ONE Stage-1 template for the whole production. type = data | embedding.
+     One condor job per input pico (maxFilesPerProcess=1); each job produces
+     ALL jet radii and ALL trigger bits in a single tree (triggers are selected
+     at Stage-2). Templated with star-submit-template -entities type=<...>,filelist=<...>. -->
+<job name="jets_&type;_" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission="false">
+
+        <input URL="filelist:/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/&filelist;" nFiles="all" />
+
+        <command>
+        @ nFile=0
+        while ( $nFile &lt; $INPUTFILECOUNT )
+        eval set filename = '$INPUTFILE'$nFile
+        echo $filename
+        singularity exec -e -B $SCRATCH -B /gpfs01 /gpfs01/star/pwg/prozorov/jets_pp_2012/star_star.simg bash container.sh $filename &type;
+        @ nFile++
+        end
+        </command>
+
+        <stdout URL="file:/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/submit/log/&type;_$FILEBASENAME.out" />
+        <stderr URL="file:/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/submit/log/&type;_$FILEBASENAME.err" />
+
+        <ResourceUsage>
+        <Memory>
+                <MinMemory>2500</MinMemory>
+        </Memory>
+        </ResourceUsage>
+
+        <Generator>
+                <Location>/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/submit/scheduler/gen/</Location>
+        </Generator>
+
+        <!-- Only the final products are copied back; intermediate mc_/geant_ are
+             discarded in scratch. First-match wins. -->
+        <output fromScratch="matched_*.root" toURL="/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/output/matching/" />
+        <output fromScratch="data_*.root" toURL="/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/output/data/" />
+
+        <SandBox installer="ZIP">
+                <Package name="run12prod">
+                        <File>file:./lists</File>
+                        <File>file:./container.sh</File>
+                        <File>file:./setup.sh</File>
+                        <File>file:./Makefile</File>
+                        <File>file:./src/</File>
+                        <File>file:./macros/</File>
+                        <File>file:./bin/RunppAna</File>
+                </Package>
+        </SandBox>
+
+</job>

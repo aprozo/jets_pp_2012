@@ -76,6 +76,9 @@ struct PseudoJetPtGreater {
 class ResultStruct {
 public:
    PseudoJet orig;
+   double area = 0.0;          ///< jet area from ClusterSequenceArea
+   double bg_density = 0.0;    ///< off-axis-cones UE density (averaged over the two ±π/2 cones), GeV / unit area
+   double pt_corrected = 0.0;  ///< orig.perp() - bg_density * area
    ResultStruct(PseudoJet orig) : orig(orig) {};
    static bool origptgreater(ResultStruct const &a, ResultStruct const &b) { return a.orig.pt() > b.orig.pt(); };
 };
@@ -97,71 +100,7 @@ static const Selector OnlyCharged =
    NotGhost && (SelectorChargeRange(-3, -1) || SelectorChargeRange(1, 3)); ///< Helper useful outside the class as well
 static const Selector OnlyNeutral = NotGhost && SelectorChargeRange(0, 0); ///< Helper useful outside the class as well
 
-// Histograms for  QA histograms
-
-struct HistogramManager {
-   void Init()
-   {
-      vx = new TH1D("vx", "Primary vertex x; vx, cm; N", 300, -0.5, 0.5);
-      vy = new TH1D("vy", "Primary vertex y; vy, cm; N", 300, -0.5, 0.5);
-      vz = new TH1D("vz", "Primary vertex z; vz, cm; N", 280, -70, 70);
-      vz_vpd = new TH1D("vz_vpd", "Primary vertex z from VPD; vz, cm; N", 280, -70, 70);
-      vz_diff = new TH1D("vz_diff", "vertex z VPD-TPC; vz, cm; N", 500, -20, 20);
-      pt_sDCAxy_pos =
-         new TH2D("pt_sDCAxy_pos", "sDCAxy positive tracks; sDCA, cm; pt, GeV/c; N", 100, -4, 4, 100, 0, 30);
-      pt_sDCAxy_neg =
-         new TH2D("pt_sDCAxy_neg", "sDCAxy negative tracks; sDCA, cm;  pt, GeV/c; N", 100, -4, 4, 100, 0, 30);
-      jetpt_TowerID =
-         new TH2D("jetpt_TowerID", "Jet pt vs Tower ID; Jet pt, GeV/c; Tower ID", 50, 0, 50, 4801, 0, 4801);
-      highjetpt_leadingtower_pt = new TH1D(
-         "highjetpt_leadingtower_pt", "Leading tower pt in high(>22) pt jets; Leading tower pt, GeV/c; N", 100, 0, 40);
-      highjetpt_leadingtrack_pt = new TH1D(
-         "highjetpt_leadingtrack_pt", "Leading track pt in high(>22) pt jets; Leading track pt, GeV/c; N", 100, 0, 40);
-      //  problematic jets qa histograms
-      sDCAxy = new TH1D("sDCAxy", "sDCAxy; sDCA, cm", 100, -1, 1);
-      DCA = new TH1D("DCA", "DCA; DCA, cm", 100, 0, 2);
-   }
-   void FillTrack(TStarJetPicoPrimaryTrack *track)
-   {
-      sDCAxy->Fill(track->GetsDCAxy() * track->GetCharge());
-      DCA->Fill(track->GetDCA());
-   }
-
-   void Write(TFile *f, TString name = "QA_histograms")
-   {
-      f->cd();
-      f->mkdir(name);
-      f->cd(name);
-      vx->Write();
-      vy->Write();
-      vz->Write();
-      vz_vpd->Write();
-      vz_diff->Write();
-      pt_sDCAxy_pos->Write();
-      pt_sDCAxy_neg->Write();
-      jetpt_TowerID->Write();
-      highjetpt_leadingtower_pt->Write();
-      highjetpt_leadingtrack_pt->Write();
-      sDCAxy->Write();
-      DCA->Write();
-   }
-
-   TH2D *pt_sDCAxy_pos;             ///< QA for positive DCAxy
-   TH2D *pt_sDCAxy_neg;             ///< QA for negative DCAxy
-   TH2D *jetpt_TowerID;             ///< QA for jet pt vs Tower ID
-   TH1D *highjetpt_leadingtower_pt; ///< QA for leading tower pt in high
-                                    ///< pt jets
-   TH1D *highjetpt_leadingtrack_pt; ///< QA for leading track pt in high
-                                    ///< pt jets
-   TH1D *vx;                        ///< QA for primary vertex x
-   TH1D *vy;                        ///< QA for primary vertex y
-   TH1D *vz;                        ///< QA for primary vertex z
-   TH1D *vz_vpd;                    ///< QA for primary vertex z from VPD
-   TH1D *vz_diff;                   ///< QA for vertex z VPD-TPC
-   // QA for tracks
-   TH1D *sDCAxy;
-   TH1D *DCA;
-};
+#include "JetQAHistogramManager.hh"
 
 /*
    The main class
@@ -173,7 +112,7 @@ private:
    // ----------------------------
    ppParameters pars; ///< container to have all analysis parameters in one place
 
-   HistogramManager QA_hist; ///< QA histograms
+   JetQAHistogramManager QA_hist; ///< QA histograms
 
    // Internal
    // --------
@@ -212,6 +151,14 @@ private:
    double weight;
    int njets;
    bool isTriggerEvent;
+   // Per-event JP-trigger fire flags = header trigger IDs 370601/611/621. For
+   // DATA these are the REAL prescale-accepted hardware bits (the maker copies
+   // triggerIdCollection().nominal() verbatim) — the basis of the
+   // independent-trigger (fired-sample / sampled-lumi) analysis downstream.
+   bool firedJP0;
+   bool firedJP1;
+   bool firedJP2;
+   double vz;  ///< primary-vertex z of the current event (needed for vertex-z reweighting downstream)
 
    JetAnalyzer *pJA = 0;
 
@@ -237,7 +184,7 @@ public:
    // -------------------
    inline ppParameters &GetPars() { return pars; };
    // get HistogramManager
-   inline HistogramManager &GetHistogramManager() { return QA_hist; };
+   inline JetQAHistogramManager &GetHistogramManager() { return QA_hist; };
 
    /// Get jet radius
    inline double GetR() { return pars.R; };
@@ -265,10 +212,16 @@ public:
    inline double GetEventid() { return eventid; };
 
    inline bool IsTriggerEvent() { return isTriggerEvent; };
+   inline bool FiredJP0() { return firedJP0; };
+   inline bool FiredJP1() { return firedJP1; };
+   inline bool FiredJP2() { return firedJP2; };
 
    inline float GetEventSumPt() { return event_sum_pt; };
 
    inline int GetEventMult() { return mult; };
+
+   /// Primary-vertex z of the current event (cm)
+   inline double GetVz() { return vz; };
 
    /// Get the Trigger (HT) object if it exists, for matching
    inline TStarJetVector *GetTrigger() const { return pHT; };
@@ -282,5 +235,8 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pa
 /* For use with GeantMc data
  */
 void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader);
+
+bool isInsideJetPatch(const int &jetPatch, const float &jetEta, const float &jetPhi);
+bool isInsideJetPatchDmitry(const int &jetPatch, const float &jetEta, const float &jetPhi);
 
 #endif // __PPANALYSIS_HH

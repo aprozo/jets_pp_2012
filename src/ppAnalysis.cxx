@@ -1,9 +1,10 @@
 
 #include "ppAnalysis.hh"
+#include <climits>
 #include <fstream>
 #include <iostream>
 #include <stdio.h>
-#include <stdlib.h> // for getenv, atof, atoi
+#include <stdlib.h> // for atof, atoi
 #include <string>
 
 using std::cerr;
@@ -11,10 +12,15 @@ using std::cout;
 using std::endl;
 
 bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R);
+bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R, const TString &which = "JP2", double vz = 0.0);
 bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R);
+int jp_patch_adc_near(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R, double vz);
 void setTriggerBitMap(TStarJetPicoTriggerInfo *trig, TStarJetPicoEventHeader *header);
 bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi);
-bool isInsideJetPatch(const int &jetPatch, const float &jetEta, const float &jetPhi);
+
+// Off-axis-cones UE density estimator (GeV per unit (η,φ) area).
+// Two cones at (η_jet, φ_jet ± π/2) of radius R; ρ = avg(ΣpT) / (π R²).
+double off_axis_cones_density(const PseudoJet &jet, const vector<PseudoJet> &particles, double R);
 
 double getPythiaWeight(TString filename);
 // Standard ctor
@@ -24,7 +30,6 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
    // ---------------
    vector<string> arguments(argv + 1, argv + argc);
    bool argsokay = true;
-   bool forcedgeantnum = false;
    NEvents = -1;
    for (auto parg = arguments.begin(); parg != arguments.end(); ++parg) {
       string arg = *parg;
@@ -138,7 +143,7 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
          pars.IntTowScale = atoi(parg->data());
          pars.fTowScale = 1.0 + pars.IntTowScale * pars.fTowUnc;
          cout << "Setting tower scale to " << pars.fTowScale << endl;
-         if (pars.IntTowScale < -1 || pars.FakeEff > 1) {
+         if (pars.IntTowScale < -1 || pars.IntTowScale > 1) {
             argsokay = false;
             break;
          }
@@ -151,7 +156,6 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
             argsokay = false;
             break;
          }
-         forcedgeantnum = true;
          pars.UseGeantNumbering = bool(atoi(parg->data()));
       } else if (arg == "-jetnef") {
          if (++parg == arguments.end()) {
@@ -220,7 +224,15 @@ ppAnalysis::ppAnalysis(const int argc, const char **const argv)
 
    // Derived rapidity cuts
    // ---------------------
-   EtaJetCut = pars.EtaConsCut - pars.R;
+   // Jet PHYSICS-eta acceptance = Dmitry's ETAFID = 1.0, so that jets with
+   // |det_eta|<0.5 survive jet-finding instead of being pre-cut at |physics|<0.5
+   // (a jet with |det_eta|<0.5 at |vz|<60 has |physics eta| < ~0.72, so 1.0 is
+   // safely inclusive). The FINAL |det_eta|<0.5 detector acceptance is imposed
+   // downstream (det_eta is written by RunppAna.cxx and cut in cross_section
+   // Raw()), reproducing Dmitry's |physics|<1.0 then |det_eta|<0.5 acceptance.
+   // The CONSTITUENT cut (pars.EtaConsCut, applied in the particle loop) is
+   // unchanged.
+   EtaJetCut = 1.0;
    EtaGhostCut = EtaJetCut + 2.0 * pars.R;
 
    // Jet candidate selectors
@@ -279,22 +291,23 @@ bool ppAnalysis::InitChains()
 
    // For picoDSTs
    // -------------
-   if (pars.intype == INPICO || pars.intype == MCPICO) {
-      pReader = SetupReader(Events, pars);
 
-      InitializeReader(pReader, pars.InputName, NEvents, PicoDebugLevel, pars.HadronicCorr);
-      if (pars.intype == MCPICO) {
-         TurnOffCuts(pReader);
-         pars.MaxJetNEF = 1.0;
-         pars.sDCAxyCut = 99999;
-         pars.PtConsMin = 0.0;
-         pars.PtConsMax = 99999.0;
-         pars.FakeEff = 0;
-      }
+   pReader = SetupReader(Events, pars);
 
-      // initialize qa histograms
-      QA_hist.Init();
+   InitializeReader(pReader, pars.InputName, NEvents, PicoDebugLevel, pars.HadronicCorr);
+   if (pars.intype == MCPICO) {
+      TurnOffCuts(pReader);
+      pars.MaxJetNEF = 1.0;
+      pars.sDCAxyCut = 99999;
+      pars.PtConsMin = 0.0;
+      pars.PtConsMax = 99999.0;
+      // No DCA / flag concept for particle-level MC tracks.
+      pars.ApplyTdcaPtDep = false;
+      pars.FlagMin = INT_MIN;
    }
+
+   // initialize qa histograms
+   QA_hist.Init();
 
    cout << "N = " << NEvents << endl;
 
@@ -326,9 +339,9 @@ EVENTRESULT ppAnalysis::RunEvent()
 
    pFullEvent = pReader->GetOutputContainer()->GetArray();
    TStarJetPicoEventHeader *header = pReader->GetEvent()->GetHeader();
-
-   // JP2 event trigger - 370621 || 380403
-   // BHT2 trigger:  370531 || 380204
+   // pp 2012 200 GeV
+   // JP2 event trigger - 370621
+   // BHT2 trigger:  370531
 
    set<int> event_triggers;
    for (int i = 0; i < header->GetNOfTriggerIds(); i++) {
@@ -338,18 +351,32 @@ EVENTRESULT ppAnalysis::RunEvent()
    // only if not mcpico
    map<TString, set<int>> trigger_map_2012;
    trigger_map_2012["JP2"] = {370621};
+   trigger_map_2012["JP1"] = {370611};
+   trigger_map_2012["JP0"] = {370601};
    trigger_map_2012["HT2"] = {370531, 500205}; // 500205 - leftover in Youqi embedding trees
    trigger_map_2012["MB"] = {370011};
+
+   // Per-event JP fire flags (header trigger IDs). For data these are the real
+   // prescale-accepted hardware bits — measured P(fired_JP0|fired_JP2)=0.0083
+   // ~ 1/ps0, P(fired_JP1|fired_JP2)=0.40 ~ 1/ps1 (2026-06-11).
+   firedJP0 = event_triggers.count(370601) != 0;
+   firedJP1 = event_triggers.count(370611) != 0;
+   firedJP2 = event_triggers.count(370621) != 0;
 
    TString current_trigger = "";
    if (pars.TriggerName.Contains("JP2"))
       current_trigger = "JP2";
+   else if (pars.TriggerName.Contains("JP1"))
+      current_trigger = "JP1";
+   else if (pars.TriggerName.Contains("JP0"))
+      current_trigger = "JP0";
    else if (pars.TriggerName.Contains("HT2"))
       current_trigger = "HT2";
    else if (pars.TriggerName.Contains("MB"))
       current_trigger = "MB";
 
    isTriggerEvent = false;
+
    if (pars.intype == INPICO) {
       for (auto trig_id : trigger_map_2012[current_trigger]) {
          if (event_triggers.count(trig_id) != 0) {
@@ -366,6 +393,12 @@ EVENTRESULT ppAnalysis::RunEvent()
    vector<int> HT2_trigger_ids;
    int count_bad_tower_triggers = 0;
 
+   // Build the simu-side trigger-object list and, in parallel, count BHT2
+   // triggers caused by towers in the analysis bad-tower list. This implements
+   // the "didFire AND shouldFire" event filter (mirrors Dmitry's
+   // make_jet_plots.cxx:336-365): a trigger object exists only if the trigger
+   // simulator agreed that the patch/tower fired (shouldFire>0), and the
+   // hardware-fired list (header->GetTriggerId) provides didFire.
    for (int i = 0; i < header->GetNOfTrigObjs(); ++i) {
       auto trig = pReader->GetEvent()->GetTrigObj(i);
       // https://github.com/wsu-yale-rhig/TStarJetPicoMaker/blob/82e051867037038001ea1218256ef48e3dfca9a0/StRoot/JetPicoMaker/StMuJetAnalysisTreeMaker.cxx#L772
@@ -377,6 +410,10 @@ EVENTRESULT ppAnalysis::RunEvent()
       if (trig->isBHT2())
          HT2_trigger_ids.push_back(trig->GetId());
 
+      // For BHT triggers (trig ID = firing tower ID): is the firing tower in
+      // the analysis bad-tower mask? If yes, this BHT trigger is "hot tower"
+      // contamination — count it but still keep the trigger object (so
+      // jp_match / ht_match can decide).
       bool is_bad_tower = false;
       for (Int_t ntower = 0; ntower < header->GetNOfTowers(); ntower++) {
          TStarJetPicoTower *ptower = pReader->GetEvent()->GetTower(ntower);
@@ -386,15 +423,44 @@ EVENTRESULT ppAnalysis::RunEvent()
             break;
          }
       }
-      // if (is_bad_tower)
-      // continue; // skip triggers from bad towers
       triggers.push_back(trig);
    }
 
-   // if (HT2_trigger_ids.size() > 0 &&
-   //     count_bad_tower_triggers == HT2_trigger_ids.size()) { // all HT2 triggers are caused by bad towers
-   //    return EVENTRESULT::NOTACCEPTED;
-   // }
+   // Hot-tower-only HT2 events: every BHT2 trigger came from a bad tower → drop.
+   // (Mirrors Dmitry's analysis-time filter; biases the cross section LOW
+   // otherwise because the event lands in the luminosity sum but contains
+   // no real jets after the bad-tower mask removes the firing tower.)
+   if (HT2_trigger_ids.size() > 0 && count_bad_tower_triggers == (int)HT2_trigger_ids.size()) {
+      return EVENTRESULT::NOTACCEPTED;
+   }
+
+   // didFire AND shouldFire (the simu-vs-hardware AND), per trigger.
+   // didFire    = trigger ID present in header->fTriggerIdArray (hardware).
+   // shouldFire = at least one TStarJetPicoTriggerInfo has the matching
+   //              isJP0/isJP1/isJP2/isBHT2 bit set (simu agrees).
+   // For events where only didFire is true (hot-tower-only triggers), the
+   // simu disagrees and the event is excluded from `isTriggerEvent`.
+   if (pars.intype == INPICO && current_trigger.Length() > 0) {
+      bool simu_fired = false;
+      for (auto t : triggers) {
+         if (current_trigger == "JP2" && t->isJP2()) {
+            simu_fired = true;
+            break;
+         } else if (current_trigger == "JP1" && t->isJP1()) {
+            simu_fired = true;
+            break;
+         } else if (current_trigger == "JP0" && t->isJP0()) {
+            simu_fired = true;
+            break;
+         } else if (current_trigger == "HT2" && t->isBHT2()) {
+            simu_fired = true;
+            break;
+         }
+      }
+      // MB has no simu equivalent here — keep `isTriggerEvent` as-is.
+      if (current_trigger != "MB")
+         isTriggerEvent = isTriggerEvent && simu_fired;
+   }
 
    for (auto trig : triggers) {
 
@@ -417,7 +483,11 @@ EVENTRESULT ppAnalysis::RunEvent()
    refmult = header->GetProperReferenceMultiplicity();
    eventid = header->GetEventId();
    runid1 = header->GetRunId();
-   double vz = header->GetPrimaryVertexZ();
+   QA_hist.SetRun(runid1); // run-binned constituent QA (track/tower vs run)
+   // Promote vz to a class member so RunppAna can expose it on ResultTree
+   // for downstream vertex-z reweighting (Dmitry-equivalent of
+   // SetVertexReweightingParams).
+   vz = header->GetPrimaryVertexZ();
    double vy = header->GetPrimaryVertexY();
    double vx = header->GetPrimaryVertexX();
    double vz_vpd = header->GetVpdVz();
@@ -450,6 +520,11 @@ EVENTRESULT ppAnalysis::RunEvent()
    TList *towersList = pReader->GetListOfSelectedTowers();
    // print content of tracks and towers
 
+   // Event-level max-track-pT veto is applied via
+   // TStarJetPicoEventCuts::SetMaxEventPtCut(pars.MaxEventPtCut) — see
+   // BuildEventAndJetCuts() below. With MaxEventPtCut=30 we match
+   // Dmitry's make_max_track_pt_cut(30).
+
    // Fill particle container
    // -----------------------
    for (int i = 0; i < pFullEvent->GetEntries(); ++i) {
@@ -459,17 +534,45 @@ EVENTRESULT ppAnalysis::RunEvent()
 
       if (trackid < 0 && pars.intype == INPICO) { // it means it is a track -  not tower
          TStarJetPicoPrimaryTrack *track = (TStarJetPicoPrimaryTrack *)tracksList->At(i);
-         container_id = i;
+         trackid = i;
          float sDCAxy = track->GetsDCAxy();
          int charge = track->GetCharge();
          float pt = track->GetPt();
-         if (charge == 1) {
-            QA_hist.pt_sDCAxy_pos->Fill(sDCAxy, pt);
-         } else if (charge == -1) {
-            QA_hist.pt_sDCAxy_neg->Fill(sDCAxy, pt);
-         }
+         // flat |sDCAxy| cap (kept for legacy / systematics; default disabled)
          if (fabs(sDCAxy) > pars.sDCAxyCut)
             continue;
+         // Dmitry's StjTrackCutFlag(0): reject flag <= 0 (require flag > 0).
+         // Pico maker keeps flag >= 0, so we drop flag == 0 here.
+         if (track->GetFlag() < pars.FlagMin)
+            continue;
+         // Two-part DCA selection, Dmitry's Run12 alignment (Table 2 of the
+         // analysis note). BOTH parts cap the FULL 3-D DCA = dcaGlobal().mag()
+         // = track->GetDCA() (WITH z), NOT the transverse component:
+         //   (1) flat |DCA| < 3 cm, applied by the reader via
+         //       SetDCACut(pars.DcaCut) on track->GetDCA() (see SetupReader); and
+         //   (2) the pT-dependent cap below — Dmitry's StjTrackCutTdcaPtDependent,
+         //       which despite the "T" name cuts Tdca = dcaGlobal().mag() (the
+         //       3-D magnitude); see star-jet/.../mudst/StjTPCMuDst.cxx:100:
+         //         DCA < 2 cm                 for pt < 0.5 GeV
+         //             < 2.5 cm - (1/GeV)*pt  for 0.5 <= pt < 1.5 GeV  (slope -1)
+         //             < 1 cm                 for pt >= 1.5 GeV
+         //       i.e. pt1=0.5/dca1=2.0, pt2=1.5/dca2=1.0. (Since dca1=2 < 3, this
+         //       pT-dependent cap is always at least as tight as the flat 3 cm.)
+         if (pars.ApplyTdcaPtDep) {
+            const double a = track->GetDCA();
+            double dcaMax;
+            if (pt < pars.TdcaPt1) {
+               dcaMax = pars.TdcaDcaMax1;
+            } else if (pt < pars.TdcaPt2) {
+               dcaMax = pars.TdcaDcaMax1
+                        + (pars.TdcaDcaMax2 - pars.TdcaDcaMax1) /
+                              (pars.TdcaPt2 - pars.TdcaPt1) * (pt - pars.TdcaPt1);
+            } else {
+               dcaMax = pars.TdcaDcaMax2;
+            }
+            if (a > fabs(dcaMax))
+               continue;
+         }
       }
 
       // Ensure kinematic similarity
@@ -521,7 +624,8 @@ EVENTRESULT ppAnalysis::RunEvent()
       }
 
       particles.push_back(PseudoJet(*sv));
-      particles.back().set_user_info(new JetAnalysisUserInfo(3 * sv->GetCharge(), sv->mc_pdg_pid(), "", container_id));
+      int id = sv->GetCharge() != 0 ? trackid : container_id;
+      particles.back().set_user_info(new JetAnalysisUserInfo(sv->GetCharge(), sv->mc_pdg_pid(), "", id));
    }
 
    // mult = particles.size();
@@ -543,13 +647,19 @@ EVENTRESULT ppAnalysis::RunEvent()
       delete pJA;
       pJA = 0;
    }
-   pJA = new JetAnalyzer(particles, JetDef);
+   // Area-aware clustering so jet.area() works. Ghost area 0.04 matches Dmitry's
+   // StFastJetAreaPars in run12_200GeVJetCode/RunJetFinder2012UePro.C:162.
+   fastjet::AreaDefinition area_def(fastjet::active_area_explicit_ghosts,
+                                    fastjet::GhostedAreaSpec(EtaGhostCut, 1, 0.04));
+   pJA = new JetAnalyzer(particles, JetDef, area_def);
 
    JetAnalyzer &JA = *pJA;
    vector<PseudoJet> JAResult = sorted_by_pt(select_jet(JA.inclusive_jets()));
    if (JAResult.size() == 0) {
+      QA_hist.FillEvent(vx, vy, vz, vz_vpd, refmult, mult, 0, event_sum_pt);
       return EVENTRESULT::NOJETS;
    }
+
 
    // check if the event has high weight or large |vz|
    double pthat_mult = 2;
@@ -580,8 +690,20 @@ EVENTRESULT ppAnalysis::RunEvent()
 
       PseudoJet NeutralPart = join(OnlyNeutral(CurrentJet.constituents()));
 
-      bool is_matched_jp = match_jp(CurrentJet, triggers, pars.R);
+      // bool is_matched_jp = match_jp(CurrentJet, triggers, pars.R);
+      bool is_matched_jp = match_jp(CurrentJet, triggers, pars.R, pars.TriggerName, vz);
+      // Per-threshold JP matches (isJP0/isJP1/isJP2 separately) — each trigger's
+      // analysis gates on its OWN patch match. NOT degenerate (the old code
+      // copied one flag into all three downstream branches).
+      bool is_matched_jp0 = match_jp(CurrentJet, triggers, pars.R, "JP0", vz);
+      bool is_matched_jp1 = match_jp(CurrentJet, triggers, pars.R, "JP1", vz);
+      bool is_matched_jp2 = match_jp(CurrentJet, triggers, pars.R, "JP2", vz);
       bool is_matched_ht = match_ht(CurrentJet, triggers, pars.R);
+
+      // Analysis-level JP cuts (matches Dmitry's make_detector_level_cut for jp=0/1/2):
+      //   - jet must be inside a fired JP-patch (jp_match)
+      //   - jp1 requires pT >= 6.0 GeV, jp2 requires pT >= 8.4 GeV (jp0 has no extra threshold)
+      // (See Dmitry/star-jet/StJetPlots/StJetCut.h:182-208.)
 
       double jetpttot = CurrentJet.perp();
 
@@ -594,10 +716,42 @@ EVENTRESULT ppAnalysis::RunEvent()
       // Save neutral energy fraction in multi-purpose field
       userinfo->SetNumber(jetptne / jetpttot);
       userinfo->SetMatchJP(is_matched_jp);
+      userinfo->SetMatchJP0(is_matched_jp0);
+      userinfo->SetMatchJP1(is_matched_jp1);
+      userinfo->SetMatchJP2(is_matched_jp2);
       userinfo->SetMatchHT(is_matched_ht);
+      // Leading-neutral tower BEMC id (-1 if no neutral constituents).
+      // Constituent user_info stores tower id via container_id (see L601).
+      int leadTowId = -1;
+      if (!neutral_constituents.empty()) {
+         leadTowId = (int)neutral_constituents.front().user_info<JetAnalysisUserInfo>().GetNumber();
+      }
+      userinfo->SetLeadTowerId(leadTowId);
+      // Near-max JP-patch ADC matched to this jet (-1 if no JP0+ patch in box).
+      // Provenance/QA probe: degenerate-data signature check uses
+      // trigger_match_JP2 && jp_patch_adc<=36 ~ 0.
+      {
+         const int jpadc = jp_patch_adc_near(CurrentJet, triggers, pars.R, vz);
+         userinfo->SetJpAdc(jpadc);
+         if (jpadc >= 0) QA_hist.run_jp_patch_adc->Fill(runid1, jpadc); // per-run ADC, full coverage
+      }
 
       if (pars.MaxJetNEF < 1.0 && (jetptne / jetpttot) > pars.MaxJetNEF)
          continue;
+
+      // Per-jet max-track-pT cut (mirrors Dmitry's make_max_track_pt_cut).
+      // INPICO only — MC truth jets keep their high-pT particles.
+      if (pars.intype == INPICO && pars.MaxJetTrackPt > 0) {
+         bool drop_jet = false;
+         for (const PseudoJet &c : charged_constituents) {
+            if (c.perp() > pars.MaxJetTrackPt) {
+               drop_jet = true;
+               break;
+            }
+         }
+         if (drop_jet)
+            continue;
+      }
 
       // auto leadingTrack = charged_constituents.at(0);
       // if (jetpttot > 22)
@@ -619,10 +773,27 @@ EVENTRESULT ppAnalysis::RunEvent()
       // }
 
       CurrentJet.set_user_info(userinfo);
-      Result.push_back(ResultStruct(CurrentJet));
+
+      QA_hist.FillJet(CurrentJet, is_matched_jp, is_matched_ht, tracksList);
+      // Jet area + UE density (off-axis cones).
+      double area = 0.0, bg_rho = 0.0, pt_corr = CurrentJet.perp();
+      try {
+         area = CurrentJet.area(); // ghosted-active area
+         bg_rho = off_axis_cones_density(CurrentJet, particles, pars.R);
+         pt_corr = CurrentJet.perp() - bg_rho * area;
+      } catch (...) {
+         // CS without area definition would throw; we created one above so this is just a guard.
+      }
+      ResultStruct rs(CurrentJet);
+      rs.area = area;
+      rs.bg_density = bg_rho;
+      rs.pt_corrected = pt_corr;
+      Result.push_back(rs);
    }
    // By default, sort for original jet pt
    sort(Result.begin(), Result.end(), ResultStruct::origptgreater);
+
+   QA_hist.FillEvent(vx, vy, vz, vz_vpd, refmult, mult, Result.size(), event_sum_pt);
 
    return EVENTRESULT::JETSFOUND;
 }
@@ -664,6 +835,7 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pa
 
    // Additional cuts
    evCuts->SetVertexZCut(pars.VzCut);
+   evCuts->SetPVRankingCut(0.0);
    evCuts->SetRefMultCut(pars.RefMultCut);
    // evCuts->SetVertexZDiffCut(pars.VzDiffCut);
    evCuts->SetMaxEventPtCut(pars.MaxEventPtCut);
@@ -763,7 +935,8 @@ double getPythiaWeight(TString filename)
          return weight;
       }
    }
-   return -1;
+   // if no match found, throw error
+   throw std::runtime_error(std::string("No matching pythia pt hat bin found in filename: ") + filename.Data());
 }
 // bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R)
 // {
@@ -780,6 +953,53 @@ double getPythiaWeight(TString filename)
 //    return false;
 // }
 
+bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R, const TString &which, double vz)
+{
+   // `which` selects which JP-trigger family to require a fired patch from.
+   // "JP2" -> isJP2, "JP1" -> isJP1, "JP0" -> isJP0, "JPany" or empty -> any of the three.
+   // Use Contains() so prefixed names from container.sh ("data_JP2", "geant_JP2",
+   // "mc_JP2") are recognized — exact equality fails for those.
+   //
+   // Matching geometry depends on R:
+   //   R <  0.5: use strict patch containment (jet axis inside the 1.0×60°
+   //             JP-patch box). Appropriate when the cone fits inside the
+   //             patch — fewer edge effects.
+   //   R >= 0.5: use Dmitry-relaxed match (|Δη|<0.6 AND |Δφ|<0.6 from patch
+   //             centre) since the cone overlaps the patch edges and the
+   //             strict cut would drop genuinely-triggered jets.
+   const bool any = (which.Length() == 0) || which.Contains("JPany");
+   const bool jp0 = any || which.Contains("JP0");
+   const bool jp1 = any || which.Contains("JP1");
+   const bool jp2 = any || which.Contains("JP2");
+   const bool useStrict = (R < 0.5f);
+   // AUDIT FIX #4: match the JP patch on the jet DETECTOR eta (Dmitry jp_match.h:17),
+   // not the physics eta. detEta = asinh(sinh(eta_phys) + vz/225.405) (BEMC radius).
+   const double jetDetEta = std::asinh(std::sinh(jet.eta()) + vz / 225.405);
+   // HARDWARE-first match: the data picos carry the kOnline (hardware-equivalent,
+   // verified == Dmitry skim 513/513) JP patches as bit-7 trigger objects. When
+   // present, match EXCLUSIVELY against them with their native family bits
+   // (= the L0 register decision). Embedding and legacy picos have no bit-7
+   // objects, so they fall through to the offline-emulator isJP*() gate (the same
+   // ruler the response uses, since sim events have no hardware).
+   bool haveHW = false;
+   for (auto t : triggers)
+      if (t->GetBit(7)) { haveHW = true; break; }
+   for (auto trigger : triggers) {
+      if (trigger->GetBit(7) != haveHW)
+         continue;
+      const bool fired =
+         (jp2 && trigger->isJP2()) || (jp1 && trigger->isJP1()) || (jp0 && trigger->isJP0());
+      if (!fired)
+         continue;
+      const bool match = useStrict
+         ? isInsideJetPatch(trigger->GetId(), jetDetEta, jet.phi())
+         : isInsideJetPatchDmitry(trigger->GetId(), jetDetEta, jet.phi());
+      if (match)
+         return true;
+   }
+   return false;
+}
+
 bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R)
 {
    for (auto trigger : triggers) {
@@ -789,6 +1009,32 @@ bool match_jp(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float 
    return false;
 }
 
+// Max ADC over JP patches geometrically matched to the jet (SAME box/detEta as
+// match_jp), regardless of which JP threshold fired. The maker injects a trig obj
+// only for patches with ADC>JP0(=20), so this is the near-max ADC over JP0+ patches
+// in the jet's box; -1 => no such patch.
+int jp_patch_adc_near(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R, double vz)
+{
+   const bool useStrict = (R < 0.5f);
+   const double jetDetEta = std::asinh(std::sinh(jet.eta()) + vz / 225.405);
+   // 2026-07-02: hardware-first, same convention as match_jp — on new data
+   // picos the reported patch ADC is the kOnline (hardware) value.
+   bool haveHW = false;
+   for (auto t : triggers)
+      if (t->GetBit(7)) { haveHW = true; break; }
+   int maxAdc = -1;
+   for (auto trigger : triggers) {
+      if (trigger->GetBit(7) != haveHW)
+         continue;
+      const bool match = useStrict
+         ? isInsideJetPatch(trigger->GetId(), jetDetEta, jet.phi())
+         : isInsideJetPatchDmitry(trigger->GetId(), jetDetEta, jet.phi());
+      if (match && trigger->GetADC() > maxAdc)
+         maxAdc = trigger->GetADC();
+   }
+   return maxAdc;
+}
+
 bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float R)
 {
    for (auto trigger : triggers) {
@@ -796,16 +1042,21 @@ bool match_ht(PseudoJet &jet, vector<TStarJetPicoTriggerInfo *> triggers, float 
          continue;
       int trigger_towerid = trigger->GetId();
       for (PseudoJet &part : jet.constituents()) {
+         if (part.is_pure_ghost())
+            continue; // ghosts have no JetAnalysisUserInfo
+         if (!part.has_user_info<JetAnalysisUserInfo>())
+            continue;
          if (part.user_info<JetAnalysisUserInfo>().GetNumber() == trigger_towerid) {
             return true;
          }
       }
-      double eta = trigger->GetEta();
-      double phi = trigger->GetPhi();
-      double deta = jet.eta() - eta;
-      double dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
-      if (sqrt(deta * deta + dphi * dphi) < R)
-         return true;
+      // double eta = trigger->GetEta();
+      // double phi = trigger->GetPhi();
+      // double deta = jet.eta() - eta;
+      // double dphi = TVector2::Phi_mpi_pi(jet.phi() - phi);
+      // if (sqrt(deta * deta + dphi * dphi) < R) {
+      //    return true;
+      // }
    }
    return false;
 }
@@ -903,19 +1154,19 @@ bool getBarrelJetPatchEtaPhi(int jetPatch, float &eta, float &phi)
    // 2          0.5   30 (0.5236)            2'
    // 3          0.5  -30 (-0.5236)           4'
    // 4          0.5  -90 (-1.5708)           6'
-   // 5          0.5  -150 (2.618)            8'
+   // 5          0.5  -150 (-2.618)            8'
    // 6         -0.5   150 (2.618)           10'
    // 7         -0.5   90 (1.5708)           12'
    // 8         -0.5   30 (0.5236)            2'
    // 9         -0.5  -30 (-0.5236)           4'
    // 10        -0.5  -90 (-1.5708)           6'
-   // 11        -0.5  -150 (2.618)            8'
+   // 11        -0.5  -150 (-2.618)            8'
    // 12        -0.1   150 (2.618)           10'
    // 13        -0.1   90 (1.5708)           12'
    // 14        -0.1   30 (0.5236)            2'
    // 15        -0.1  -30 (-0.5236)           4'
    // 16        -0.1  -90 (-1.5708)           6'
-   // 17        -0.1  -150 (2.618)            8'
+   // 17        -0.1  -150 (-2.618)            8'
 
    // http://drupal.star.bnl.gov/STAR/system/files/BEMC_y2004.pdf
 
@@ -947,9 +1198,49 @@ bool isInsideJetPatch(const int &jetPatch, const float &jetEta, const float &jet
    if (phiMin <= phiMax) {
       return (phiMin <= phi && phi < phiMax);
    } else {
-      // Wrapped interval, e.g. [2.8, -2.8] in radians
-      return (phi > phiMin || phi <= phiMax);
+      // Wrapped interval, e.g. [2.8, -2.8) in radians
+      return (phi >= phiMin || phi < phiMax);
    }
 
    return false;
+}
+bool isInsideJetPatchDmitry(const int &jetPatch, const float &jetEta, const float &jetPhi)
+{
+   // Match Dmitry's `jp_match`: |Δη| < 0.6 AND |Δφ| < 0.6 from patch center.
+   // (See Dmitry/star-jet/src/common/jp_match.h.)
+   float eta_center, phi_center;
+   if (!getBarrelJetPatchEtaPhi(jetPatch, eta_center, phi_center))
+      return false;
+   float deta = jetEta - eta_center;
+   float dphi = TVector2::Phi_mpi_pi(jetPhi - phi_center);
+   return (std::fabs(deta) < 0.6f) && (std::fabs(dphi) < 0.6f);
+}
+
+double off_axis_cones_density(const PseudoJet &jet, const vector<PseudoJet> &particles, double R)
+{
+   // Off-axis cones UE density: two cones at (η_jet, φ_jet ± π/2) of radius R.
+   // ρ = ((ΣpT)_cone1 + (ΣpT)_cone2) / (2 · π R²).
+   //
+   // `particles` is the raw input list — these are not associated with any
+   // cluster sequence, so `is_pure_ghost()` would trigger
+   // "Trying to access the structure of a PseudoJet which has no associated structure".
+   // Inputs are real tracks/towers by construction, so no ghost filter needed.
+   const double eta_j = jet.eta();
+   const double phi_j = jet.phi();
+   const double phi1 = phi_j + M_PI / 2;
+   const double phi2 = phi_j - M_PI / 2;
+   const double R2 = R * R;
+   double sum1 = 0.0, sum2 = 0.0;
+   for (const auto &p : particles) {
+      const double deta = p.eta() - eta_j;
+      const double deta2 = deta * deta;
+      const double dphi1 = TVector2::Phi_mpi_pi(p.phi() - phi1);
+      if (deta2 + dphi1 * dphi1 < R2)
+         sum1 += p.perp();
+      const double dphi2 = TVector2::Phi_mpi_pi(p.phi() - phi2);
+      if (deta2 + dphi2 * dphi2 < R2)
+         sum2 += p.perp();
+   }
+   const double cone_area = M_PI * R2;
+   return 0.5 * (sum1 + sum2) / cone_area;
 }

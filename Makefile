@@ -61,8 +61,8 @@ BDIR          = bin
 ###############################################################################
 ################### Remake when these headers are touched #####################
 ###############################################################################
-INCS = $(SDIR)/JetAnalyzer.hh
-INCS = $(SDIR)/ppParameters.hh $(SDIR)/ppAnalysis.hh
+INCS = $(SDIR)/JetAnalyzer.hh $(SDIR)/JetQAHistogramManager.hh
+INCS = $(SDIR)/ppParameters.hh $(SDIR)/ppAnalysis.hh $(SDIR)/JetQAHistogramManager.hh
 
 ###############################################################################
 # standard rules
@@ -90,10 +90,11 @@ $(SDIR)/dict.cxx 		: $(SDIR)/ktTrackEff.hh
 $(ODIR)/dict.o 		: $(SDIR)/dict.cxx
 $(ODIR)/ktTrackEff.o 	: $(SDIR)/ktTrackEff.cxx $(SDIR)/ktTrackEff.hh
 $(ODIR)/JetAnalyzer.o   : ${SDIR}/JetAnalyzer.cxx ${INCS} ${SDIR}/JetAnalyzer.hh
+$(ODIR)/JetQAHistogramManager.o : $(SDIR)/JetQAHistogramManager.cxx $(INCS) $(SDIR)/JetQAHistogramManager.hh
 $(ODIR)/ppAnalysis.o : $(SDIR)/ppAnalysis.cxx $(INCS) $(SDIR)/ppAnalysis.hh
 
 # bin
-$(BDIR)/RunppAna	:		$(ODIR)/RunppAna.o	$(ODIR)/JetAnalyzer.o	$(ODIR)/ppAnalysis.o  
+$(BDIR)/RunppAna	:		$(ODIR)/RunppAna.o	$(ODIR)/JetAnalyzer.o	$(ODIR)/JetQAHistogramManager.o	$(ODIR)/ppAnalysis.o  
 ###############################################################################
 ##################################### MISC ####################################
 ###############################################################################

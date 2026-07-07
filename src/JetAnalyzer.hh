@@ -354,11 +354,26 @@ public:
    bool IsMatchedJP() const { return match_jp; };
    void SetMatchJP(const bool b) { match_jp = b; };
 
+   // Per-threshold JP-patch matches (isJP0/isJP1/isJP2) — NOT degenerate, for
+   // per-trigger response/data combination. (IsMatchedJP() = configured-trigger one.)
+   bool IsMatchedJP0() const { return match_jp0; };
+   void SetMatchJP0(const bool b) { match_jp0 = b; };
+   bool IsMatchedJP1() const { return match_jp1; };
+   void SetMatchJP1(const bool b) { match_jp1 = b; };
+   bool IsMatchedJP2() const { return match_jp2; };
+   void SetMatchJP2(const bool b) { match_jp2 = b; };
+
    bool IsMatchedHT() const { return match_ht; };
    void SetMatchHT(const bool b) { match_ht = b; };
 
    int GetTrackId() const { return trackid; };
    void SetTrackId(const int id) { trackid = id; };
+
+   int GetLeadTowerId() const { return lead_tower_id; };
+   void SetLeadTowerId(const int id) { lead_tower_id = id; };
+
+   int GetJpAdc() const { return jp_adc; };
+   void SetJpAdc(const int a) { jp_adc = a; };
 
 private:
    const int quarkcharge; ///< Charge in units of e/3
@@ -367,7 +382,12 @@ private:
    float number;    ///< Multi-purpose
    int trackid;
    bool match_jp;
+   bool match_jp0;
+   bool match_jp1;
+   bool match_jp2;
    bool match_ht;
+   int lead_tower_id = -1; ///< BEMC tower id of leading neutral constituent (-1 if none)
+   int jp_adc = -1;        ///< near-max JP-patch ADC (>JP0) matched to jet (-1 if none)
 };
 
 // =============================================================================
@@ -400,6 +420,12 @@ public:
    /// keeps the ones that have cmin <= quarkcharge <= cmax
    bool pass(const fastjet::PseudoJet &p) const
    {
+      // FastJet's `&&` between selectors does NOT short-circuit, so ghosts
+      // injected by ClusterSequenceArea reach this predicate even when
+      // composed via `NotGhost && SelectorChargeRange(...)`. Guard against
+      // missing user_info.
+      if (p.is_pure_ghost()) return false;
+      if (!p.has_user_info<JetAnalysisUserInfo>()) return false;
       const int &quarkcharge = p.user_info<JetAnalysisUserInfo>().GetQuarkCharge();
       return (quarkcharge >= cmin) && (quarkcharge <= cmax);
    };
