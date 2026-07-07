@@ -21,35 +21,49 @@ the data and the response.
    the **full** JP2 luminosity. The response's measured side instead carries
    the per-run sampling probability: w2 = 1, w1 = 1/ps0 + 1/ps1 − 1/(ps0·ps1),
    w0 = 1/ps0 (`lists/run_prescales.txt`).
-3. **Trigger correction.** Each data category is divided by its measured
-   C(pt) = R × T-hat (`config.h::TrigEffMeas`) — the in-situ hardware→simulator
-   ruler bridge, so the hardware-gated data matches the simulator-gated
-   response. cat0 (JP0) has no measured correction (C = 1).
-4. **Filtered fine response.** The migration is filled on Dmitry's fine grid
-   (0.1 GeV cells, detector 550×[5,60], particle 600×[0,60]); cells whose raw
-   pair count in a ±1 GeV box is ≤ 4 are removed (with the consistent b/x
-   subtractions, truth-weighted via `A_xfine`); everything is then rebinned to
-   the square McBins grid and
+3. **Trigger correction.** The summed data is divided by the MEASURED
+   combination-level correction C_JPX(pt) = C_sum = eps_data/eps_emb
+   (`promotion.h::JpxTrigEff`, derived by `corrections/measure_Cjpx.C`): the
+   sampling-weighted category-gate probability ratio for the exact promotion
+   gates, on the fired_JP0 data base vs the weighted embedding. Bin-by-bin in
+   the turn-on, the [19,44) pol0 fit on the plateau. One self-contained
+   in-situ measurement — the inclusive per-trigger R/T-hat tables do not see
+   the exclusive-category shuffle and over-correct the turn-on by ~half.
+4. **Filtered fine response.** The migration is filled on the fine 0.1 GeV
+   grid covering the WHOLE analysis range (reco [5,86], truth [0,86] —
+   Dmitry's [0,60] caps would truncate the 52-86 feed-down buffer column and
+   swing the last quoted bin by ±8%); cells whose raw pair count in a ±1 GeV
+   box is ≤ 4 are removed (with the consistent b/x subtractions,
+   truth-weighted via `A_xfine`); everything is then rebinned to the square
+   McBins grid and
    `M_ij = (b_i/matched_i) · A_ij/x_j`
    folds fakes (b/matched ≥ 1) and matching+trigger efficiency (A/x) into one
    matrix.
-5. **Floor-restricted inversion.** The square block [9.7, 52) is inverted
-   directly (`x = M⁻¹ b`); matched content with truth outside the block
-   (buffer feed-down, below-floor feed-up) is background-scaled away by the
-   b/matched row factor. Optional scale-matched second-difference Tikhonov
-   damping (`promotion.h::kTikhonovLambda`, 0 = Dmitry's plain inverse).
+5. **Floor-restricted inversion.** The square block [9.7, 86) is inverted
+   directly (`x = M⁻¹ b`); the 52-86 buffer is solved but never quoted;
+   below-floor feed-up is background-scaled away by the b/matched row factor.
+   Optional scale-matched second-difference Tikhonov damping
+   (`promotion.h::kTikhonovLambda`, 0 = Dmitry's plain inverse; the "jpxDamp"
+   systematic runs λ=0.030). A fold QA prints b_data/(M × Dmitry-truth) per
+   reco row to separate data-side from solve-side residuals.
 
 ## Files
 
-* `promotion.h` — every promotion-specific constant (windows, fine grid, box
-  filter, block floor, lambda, per-run prescales, runtime Leff). Shared
-  physics (bins, C(pt), badRuns, paths) comes from `../config.h`.
+* `promotion.h` — every promotion-specific constant (windows via CatJetGate,
+  fine grid, box filter, block floor, lambda, the frozen JpxTrigEff table,
+  lumi-derived weights, runtime Leff). Shared physics (bins, badRuns, paths,
+  Systematic presets) comes from `../config.h`.
 * `response.cxx` — one pass over `merged_matching_R0.5.root` → fine
   ingredients `response_JPX_R0.5_fine.root` (A, A_entries, A_x, b, x).
-* `cross_section.cpp` — data partition + C(pt) + sum, cell filter + rebin +
-  block inversion + covariance, normalization, Table III comparison. Writes
-  `xsec_JPX_R0.5.root` + `comparison_with_dmitriy_R0.5_JPX.pdf`.
-* `run_jpx.sh` — container driver.
+* `cross_section.cpp` — data partition + sum + /C_JPX (the three
+  pre-correction category histograms are cached in
+  `data_JPX_R<R>_categories.root`; delete after any selection change), cell
+  filter + rebin + block inversion + covariance, normalization, fold QA,
+  Table III comparison. Study arguments: `cross_section("nominal", lambda,
+  floor)`. Writes `xsec_JPX_R0.5.root` + `comparison_with_dmitriy_R0.5_JPX.pdf`.
+* `plot_final.C` — the summary deck (spectrum, ratio with stat+syst band,
+  per-trigger Bayes context, number table) → `jpx_final_R0.5.pdf`.
+* `run_jpx.sh` — container driver (`run_jpx.sh [step] [systName]`).
 
 ## Run
 

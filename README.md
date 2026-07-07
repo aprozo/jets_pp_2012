@@ -37,11 +37,13 @@ lists/jet_pico_dst/     data.list, embedding.list  (the latest picos)
 new_ana/
   config.h              binning, floors/quote windows, C(pt)=RxThat tables,
                         Systematic variation presets — the single source of truth
-  corrections/          hw_ratio.C (R), measure_T.C (That) — derive C(pt)
+  corrections/          hw_ratio.C (R), measure_T.C (That), measure_Cjpx.C (C_JPX)
   unfolding/unfold.cxx  per-trigger Miss/Fake response (decoupled det-eta gate)
-  cross_section.cpp     FINAL unifier: raw -> /C -> Bayes -> normalize -> xsec_<T>.root
-  cross_section_inverse/  second solver: square response + RooUnfoldInvert
-  plot_alltriggers.C    overlay every trigger vs Dmitry's Table III
+  cross_section.cpp     per-trigger: raw -> /C -> Bayes -> normalize -> xsec_<T>.root
+  cross_section_inverse/  per-trigger cross-check: square response + RooUnfoldInvert
+  combined/             THE COMBINED RESULT: JPX promotion (JP0+JP1+JP2) unfolded
+                        once by cell-filtered fine-response matrix inversion
+  plot_alltriggers.C    overlay every trigger + JPX vs Dmitry's Table III
   run.sh                Stage-2 driver: response -> cross_section -> plot
 systematics/            config-as-code variation driver + envelope band builder
 ```
@@ -60,9 +62,15 @@ the host; the build and merge run in the container. After any `src/` change,
 ## Stage-2 — cross section
 
 ```bash
-bash new_ana/run.sh all                              # Bayes (default solver)
-bash new_ana/cross_section_inverse/run_inverse.sh    # matrix-inversion cross-check
+bash new_ana/run.sh all                              # per-trigger Bayes
+bash new_ana/combined/run_jpx.sh                     # JPX combination (matrix inversion)
+bash new_ana/cross_section_inverse/run_inverse.sh    # per-trigger inversion cross-check
 ```
+
+The full-range result is the JPX promotion combination (`new_ana/combined/`,
+Dmitry's published method: exclusive JP0+JP1+JP2 shouldFire partition, one
+matrix inversion on the cell-filtered fine response). The standalone triggers
+(Bayes) are the per-region comparison and cross-check.
 
 For each trigger in `config.h` it builds the Miss/Fake response, unfolds the
 data (RooUnfoldBayes, nIter=2) after dividing by the measured trigger
