@@ -80,6 +80,14 @@ static void combine_one(const std::string &trig)
       }
    }
 
+   bool any = false;
+   for (int b = 1; b <= nb && !any; ++b) any = (up[b] > 0 || dn[b] > 0);
+   if (!any) {
+      printf("  no variation files for %s — skipped (no band written)\n", trig.c_str());
+      fnom->Close();
+      return;
+   }
+
    TH1D *syst = (TH1D *)nom->Clone("systematic");
    syst->SetDirectory(0);
    for (int b = 1; b <= nb; ++b)

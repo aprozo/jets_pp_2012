@@ -204,6 +204,9 @@ struct Systematic {
    double lumiScale = 1.0;    // luminosity scale
    double trigEffScale = 1.0; // flat scale on C(pt)
    int    nIter = kNIter;     // Bayes iterations
+   double jpxLambda = -1.0;   // JPX Tikhonov damping (<0 = promotion.h default);
+                              // the combination's unfolding systematic (Bayes
+                              // pipelines ignore it)
    Systematic() = default;
    Systematic(std::string n) : name(n) {} // for {"nominal"} and the factories below
    bool needsResponse() const { return jesShift != 0.0 || jerSmear != 0.0; }
@@ -215,6 +218,7 @@ inline Systematic SystJES(const std::string &n, double jes)  { Systematic s; s.n
 inline Systematic SystJER(const std::string &n, double jer)  { Systematic s; s.name = n; s.jerSmear = jer; return s; }
 inline Systematic SystNorm(const std::string &n, double lumi, double trig) { Systematic s; s.name = n; s.lumiScale = lumi; s.trigEffScale = trig; return s; }
 inline Systematic SystIter(const std::string &n, int ni)     { Systematic s; s.name = n; s.nIter = ni; return s; }
+inline Systematic SystJpxL(const std::string &n, double l)   { Systematic s; s.name = n; s.jpxLambda = l; return s; }
 
 // The committed systematic matrix. Add or remove sources by editing this list.
 // (JES/JER values here are illustrative — set them to the measured 1-sigma
@@ -228,7 +232,8 @@ inline std::vector<Systematic> Systematics()
       SystJER("jerUp", 0.05),
       SystNorm("trigEffUp", 1.0, 1.05), SystNorm("trigEffDown", 1.0, 0.95),
       SystNorm("lumiUp", 1.086, 1.0),   SystNorm("lumiDown", 0.914, 1.0),
-      SystIter("unfoldReg", 3), // Bayes nIter 2->3 (regularization dependence)
+      SystIter("unfoldReg", 3),    // Bayes nIter 2->3 (regularization dependence)
+      SystJpxL("jpxDamp", 0.030),  // JPX Tikhonov damping (unregularized -> damped)
    };
 }
 
@@ -257,6 +262,7 @@ inline void StampProvenance(const Systematic &s)
    TNamed("lumiScale", Form("%.4f", s.lumiScale)).Write();
    TNamed("trigEffScale", Form("%.4f", s.trigEffScale)).Write();
    TNamed("nIter", Form("%d", s.nIter)).Write();
+   TNamed("jpxLambda", Form("%.4f", s.jpxLambda)).Write();
 }
 
 const std::vector<int> colors = {2000, 2002, 2003, 2004, 2005, 2006, 2007, 2008};
