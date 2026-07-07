@@ -197,43 +197,84 @@ struct AnalysisConfig {
 //                       nominal response).
 // The variation name is stamped into every output ROOT file (provenance), so the
 // config travels with the data.
+// Calorimeter / tracking scale uncertainties (Dmitry's values, star-jet
+// default.nix:262-274): BEMC tower scale 3.2%, TPC track scale 1.1%, track
+// efficiency 1%. The jet-level shift is weighted by the jet's OWN neutral
+// fraction rt: d(pt)/pt = sqrt(((1-rt)*kTrackScale)^2 + (rt*kTowerScale)^2).
+const double kTowerScaleUnc = 0.032;
+const double kTrackScaleUnc = 0.011;
+const double kTrackEffUnc   = 0.010;
+
 struct Systematic {
    std::string name;
-   double jesShift = 0.0;     // fractional reco energy-scale shift (response)
+   double jesShift = 0.0;     // flat fractional reco-pT shift (generic studies)
+   int    emcSign = 0;        // +-1: per-jet EMC scale shift, rt-weighted
+                              // sqrt(((1-rt)*0.011)^2 + (rt*0.032)^2) (response)
+   int    trkSign = 0;        // +-1: track-efficiency equivalent, per-jet
+                              // 0.01*(1-rt) reco-pT shift (response; == data
+                              // thinned in the opposite direction)
    double jerSmear = 0.0;     // fractional extra Gaussian reco smear (response)
-   double lumiScale = 1.0;    // luminosity scale
+   double ueFraction = 1.0;   // detector-side UE-subtraction fraction (data;
+                              // nominal 1.0, variations 0.86 / 1.18)
+   double lumiScale = 1.0;    // luminosity scale (NOT in the band by default —
+                              // the 10% lumi normalization is quoted separately)
    double trigEffScale = 1.0; // flat scale on C(pt)
    int    nIter = kNIter;     // Bayes iterations
-   double jpxLambda = -1.0;   // JPX Tikhonov damping (<0 = promotion.h default);
-                              // the combination's unfolding systematic (Bayes
-                              // pipelines ignore it)
+   double jpxLambda = -1.0;   // JPX Tikhonov damping (<0 = promotion.h default)
+   int    embStatSign = 0;    // +-1: JPX embedding-statistics toys, nominal
+                              // +- 1 sigma(toys) (response-statistics term)
    Systematic() = default;
    Systematic(std::string n) : name(n) {} // for {"nominal"} and the factories below
-   bool needsResponse() const { return jesShift != 0.0 || jerSmear != 0.0; }
+   bool needsResponse() const { return jesShift != 0.0 || jerSmear != 0.0 || emcSign != 0 || trkSign != 0; }
+   // The per-jet reco-pT scale factor of the response-side shape variations.
+   double RecoShift(double rt) const
+   {
+      double s = jesShift;
+      if (emcSign != 0)
+         s += emcSign * std::sqrt(std::pow((1.0 - rt) * kTrackScaleUnc, 2) +
+                                  std::pow(rt * kTowerScaleUnc, 2));
+      if (trkSign != 0) s += trkSign * kTrackEffUnc * (1.0 - rt);
+      return s;
+   }
 };
 
 // Named constructors (C++17: no designated initializers) — each makes the intent
 // of a variation obvious at the definition site.
 inline Systematic SystJES(const std::string &n, double jes)  { Systematic s; s.name = n; s.jesShift = jes; return s; }
+inline Systematic SystEMC(const std::string &n, int sign)    { Systematic s; s.name = n; s.emcSign = sign; return s; }
+inline Systematic SystTRK(const std::string &n, int sign)    { Systematic s; s.name = n; s.trkSign = sign; return s; }
 inline Systematic SystJER(const std::string &n, double jer)  { Systematic s; s.name = n; s.jerSmear = jer; return s; }
+inline Systematic SystUE(const std::string &n, double f)     { Systematic s; s.name = n; s.ueFraction = f; return s; }
 inline Systematic SystNorm(const std::string &n, double lumi, double trig) { Systematic s; s.name = n; s.lumiScale = lumi; s.trigEffScale = trig; return s; }
 inline Systematic SystIter(const std::string &n, int ni)     { Systematic s; s.name = n; s.nIter = ni; return s; }
 inline Systematic SystJpxL(const std::string &n, double l)   { Systematic s; s.name = n; s.jpxLambda = l; return s; }
+inline Systematic SystEmbS(const std::string &n, int sign)   { Systematic s; s.name = n; s.embStatSign = sign; return s; }
 
-// The committed systematic matrix. Add or remove sources by editing this list.
-// (JES/JER values here are illustrative — set them to the measured 1-sigma
-// uncertainties. Luminosity is a correlated NORMALIZATION uncertainty and is
-// usually quoted separately, not folded into the per-bin band.)
+// The committed systematic matrix — MIRRORS Dmitry's published composition
+// (star-jet default.nix:1213-1245: quadrature of EMC scale, track efficiency,
+// embedding statistics, UE fraction; luminosity is a separate 10%
+// normalization statement, "not shown", NOT folded into the per-bin band):
+//   emcUp/Down    response reco-pT shifted per jet by the rt-weighted
+//                 tower(3.2%)/track(1.1%) scale uncertainty
+//   trkEffUp/Down 1% track-efficiency equivalent, per-jet 0.01*(1-rt)
+//   ueUp/Down     detector-side UE-subtraction fraction 1.18 / 0.86 (data)
+//   trigEffUp/Down +-1.5% on the measured C(pt) (its own measurement
+//                 precision: plateau fit +-0.8%, turn-on bins +-1-2%)
+//   unfoldReg     Bayes nIter 2->3 (per-trigger pipelines)
+//   jpxDamp       JPX Tikhonov 0->0.030 (unregularized -> damped)
+//   embStatUp/Down JPX embedding-statistics toys (+-1 sigma of 200 Poisson
+//                 resamplings of the response ingredients)
 inline std::vector<Systematic> Systematics()
 {
    return {
       {"nominal"},
-      SystJES("jesUp", +0.03), SystJES("jesDown", -0.03),
-      SystJER("jerUp", 0.05),
-      SystNorm("trigEffUp", 1.0, 1.05), SystNorm("trigEffDown", 1.0, 0.95),
-      SystNorm("lumiUp", 1.086, 1.0),   SystNorm("lumiDown", 0.914, 1.0),
-      SystIter("unfoldReg", 3),    // Bayes nIter 2->3 (regularization dependence)
-      SystJpxL("jpxDamp", 0.030),  // JPX Tikhonov damping (unregularized -> damped)
+      SystEMC("emcUp", +1), SystEMC("emcDown", -1),
+      SystTRK("trkEffUp", +1), SystTRK("trkEffDown", -1),
+      SystUE("ueUp", 1.18), SystUE("ueDown", 0.86),
+      SystNorm("trigEffUp", 1.0, 1.015), SystNorm("trigEffDown", 1.0, 0.985),
+      SystIter("unfoldReg", 3),
+      SystJpxL("jpxDamp", 0.030),
+      SystEmbS("embStatUp", +1), SystEmbS("embStatDown", -1),
    };
 }
 
@@ -258,11 +299,15 @@ inline void StampProvenance(const Systematic &s)
 {
    TNamed("variation", s.name.c_str()).Write();
    TNamed("jesShift", Form("%.4f", s.jesShift)).Write();
+   TNamed("emcSign", Form("%d", s.emcSign)).Write();
+   TNamed("trkSign", Form("%d", s.trkSign)).Write();
    TNamed("jerSmear", Form("%.4f", s.jerSmear)).Write();
+   TNamed("ueFraction", Form("%.4f", s.ueFraction)).Write();
    TNamed("lumiScale", Form("%.4f", s.lumiScale)).Write();
    TNamed("trigEffScale", Form("%.4f", s.trigEffScale)).Write();
    TNamed("nIter", Form("%d", s.nIter)).Write();
    TNamed("jpxLambda", Form("%.4f", s.jpxLambda)).Write();
+   TNamed("embStatSign", Form("%d", s.embStatSign)).Write();
 }
 
 const std::vector<int> colors = {2000, 2002, 2003, 2004, 2005, 2006, 2007, 2008};

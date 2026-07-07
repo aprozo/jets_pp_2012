@@ -72,18 +72,18 @@ static void build_fine(const std::string &jetR, const Systematic &syst)
          .Define("soft_weight", [](double pthat) { return SoftReweight::weight(pthat); }, {"pthat_mid"})
          .Define("total_weight", "mc_weight * vertex_weight * soft_weight");
 
-   // JES/JER shape systematic: shift/smear the RECONSTRUCTED pT the response
-   // maps (windows + fills use reco_pt_s). Nominal is a plain alias, so the
-   // nominal ingredients are bit-identical.
+   // Shape systematic: per-jet reco-pT shift (flat jesShift, rt-weighted EMC
+   // scale, track-eff equivalent) + optional smear — config.h::RecoShift.
+   // Nominal is a plain alias, so the nominal ingredients are bit-identical.
    ROOT::RDF::RNode shifted = syst.needsResponse()
       ? base.DefineSlot("reco_pt_s",
-                        [jes = syst.jesShift, jer = syst.jerSmear](unsigned int, double rpt) -> double {
+                        [syst](unsigned int, double rpt, double rt) -> double {
                            if (rpt < -500.0) return rpt;
-                           double f = 1.0 + jes;
-                           if (jer > 0.0) f += gRandom->Gaus(0.0, jer);
+                           double f = 1.0 + syst.RecoShift(rt);
+                           if (syst.jerSmear > 0.0) f += gRandom->Gaus(0.0, syst.jerSmear);
                            return rpt * f;
                         },
-                        {"reco_pt"})
+                        {"reco_pt", "reco_neutral_fraction"})
       : base.Define("reco_pt_s", "reco_pt");
 
    const std::string recoGate = "reco_pt_s > -500 && std::abs(reco_det_eta) < 0.5 && "

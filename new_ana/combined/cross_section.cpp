@@ -32,6 +32,7 @@
 #include <TLine.h>
 #include <TMatrixD.h>
 #include <TPad.h>
+#include <TRandom.h>
 #include <TStyle.h>
 #include <TSystem.h>
 #include <TVectorD.h>
@@ -115,8 +116,12 @@ static std::unique_ptr<TH1D> RawCombined(const std::string &jetR, const Systemat
    const std::string cachePath =
       Form("%sdata_JPX_R%s_categories.root", cfg.workdir.c_str(), jetR.c_str());
 
+   // The UE-fraction variation changes every jet's pT (windows + spectrum), so
+   // it cannot be served from the nominal cache: bypass (and do not overwrite).
+   const bool ueVar = std::abs(syst.ueFraction - 1.0) > 1e-9;
+
    TH1D *cat[3] = {nullptr, nullptr, nullptr};
-   if (!gSystem->AccessPathName(cachePath.c_str())) {
+   if (!ueVar && !gSystem->AccessPathName(cachePath.c_str())) {
       TFile fc(cachePath.c_str(), "READ");
       for (int c = 0; c < 3; ++c) {
          auto *h = (TH1D *)fc.Get(Form("jpx_cat%d", c));
@@ -149,32 +154,42 @@ static std::unique_ptr<TH1D> RawCombined(const std::string &jetR, const Systemat
                     .Define("evt_sf0", anyOf, {"trigger_match_JP0"})
                     .Define("evt_sf1", anyOf, {"trigger_match_JP1"})
                     .Define("evt_sf2", anyOf, {"trigger_match_JP2"})
-                    .Define("rcat_evt", "evt_sf2 ? 2 : (evt_sf1 ? 1 : (evt_sf0 ? 0 : -1))");
+                    .Define("rcat_evt", "evt_sf2 ? 2 : (evt_sf1 ? 1 : (evt_sf0 ? 0 : -1))")
+                    // UE-fraction variation: pt_corrected = pt_raw - area*rho, so
+                    // the varied pT is pt_corrected + (1-f)*area*rho.
+                    .Define("ptv", ueVar ? std::string(Form("pt_corrected + (%.6f)*jet_area*bg_density",
+                                                            1.0 - syst.ueFraction))
+                                         : std::string("pt_corrected"));
+      if (ueVar)
+         std::cout << "[jpx][data] UE-fraction variation: detector fraction " << syst.ueFraction
+                   << " (cache bypassed)" << std::endl;
 
       // Per-category jet masks: the SAME CatJetGate as the response reco side
       // (promotion.h — one definition); data additionally requires the
       // recorded hardware accept.
       const std::string base = "abs(det_eta) < 0.5 && neutral_fraction <= 0.95 && ";
-      auto d2 = dfn.Define("sel2", base + "rcat_evt == 2 && " + CatJetGate(2, "", "pt_corrected") +
+      auto d2 = dfn.Define("sel2", base + "rcat_evt == 2 && " + CatJetGate(2, "", "ptv") +
                                       " && (fired_JP0 || fired_JP1 || fired_JP2)")
-                   .Define("pt2", "pt_corrected[sel2]");
-      auto d1 = d2.Define("sel1", base + "rcat_evt == 1 && " + CatJetGate(1, "", "pt_corrected") +
+                   .Define("pt2", "ptv[sel2]");
+      auto d1 = d2.Define("sel1", base + "rcat_evt == 1 && " + CatJetGate(1, "", "ptv") +
                                      " && (fired_JP0 || fired_JP1)")
-                   .Define("pt1", "pt_corrected[sel1]");
-      auto d0 = d1.Define("sel0", base + "rcat_evt == 0 && " + CatJetGate(0, "", "pt_corrected") +
+                   .Define("pt1", "ptv[sel1]");
+      auto d0 = d1.Define("sel0", base + "rcat_evt == 0 && " + CatJetGate(0, "", "ptv") +
                                      " && fired_JP0")
-                   .Define("pt0", "pt_corrected[sel0]");
+                   .Define("pt0", "ptv[sel0]");
 
       auto h2 = d0.Histo1D({"jpx_cat2", "", (int)bins.size() - 1, bins.data()}, "pt2");
       auto h1 = d0.Histo1D({"jpx_cat1", "", (int)bins.size() - 1, bins.data()}, "pt1");
       auto h0 = d0.Histo1D({"jpx_cat0", "", (int)bins.size() - 1, bins.data()}, "pt0");
 
-      TFile fc(cachePath.c_str(), "RECREATE");
-      h0->Write("jpx_cat0");
-      h1->Write("jpx_cat1");
-      h2->Write("jpx_cat2");
-      fc.Close();
-      std::cout << "[jpx][data] category cache written: " << cachePath << std::endl;
+      if (!ueVar) {
+         TFile fc(cachePath.c_str(), "RECREATE");
+         h0->Write("jpx_cat0");
+         h1->Write("jpx_cat1");
+         h2->Write("jpx_cat2");
+         fc.Close();
+         std::cout << "[jpx][data] category cache written: " << cachePath << std::endl;
+      }
 
       cat[0] = (TH1D *)h0->Clone("jpx_cat0_c");
       cat[1] = (TH1D *)h1->Clone("jpx_cat1_c");
@@ -207,10 +222,11 @@ static std::unique_ptr<TH1D> RawCombined(const std::string &jetR, const Systemat
 }
 
 // ---------------------------------------------------------------------------
-// RESPONSE: fine file -> cell filter -> b/x subtractions -> coarse Ac, bc, xc.
+// RESPONSE: fine file -> cell filter -> b/x subtractions -> coarse Ac, bc, xc
+// (+ their propagated variances, for the embedding-statistics toys).
 struct CoarseResponse {
-   std::vector<std::vector<double>> A; // [reco][mc]
-   std::vector<double> b, x;
+   std::vector<std::vector<double>> A, Aerr2; // [reco][mc]
+   std::vector<double> b, x, berr2, xerr2;
 };
 
 static CoarseResponse FilterAndCoarsen(const std::string &jetR, const Systematic &syst)
@@ -333,19 +349,24 @@ static CoarseResponse FilterAndCoarsen(const std::string &jetR, const Systematic
    };
    CoarseResponse R;
    R.A.assign(nb, std::vector<double>(nb, 0.0));
+   R.Aerr2.assign(nb, std::vector<double>(nb, 0.0));
    R.b.assign(nb, 0.0);
    R.x.assign(nb, 0.0);
+   R.berr2.assign(nb, 0.0);
+   R.xerr2.assign(nb, 0.0);
    for (int i = 0; i < kNRecoFine; ++i) {
       const double rc = kRecoFineLo + (i + 0.5) * kFineW;
       const int ri = coarseIdx(rc);
       if (ri < 0) continue;
       R.b[ri] += bw[i];
+      R.berr2[ri] += b_w->GetBinError(i + 1) * b_w->GetBinError(i + 1);
       for (int j = 0; j < kNMcFine; ++j) {
          if (Aw[i][j] == 0.0) continue;
          const double mc = kMcFineLo + (j + 0.5) * kFineW;
          const int mi = coarseIdx(mc);
          if (mi < 0) continue;
          R.A[ri][mi] += Aw[i][j];
+         R.Aerr2[ri][mi] += A_w->GetBinError(i + 1, j + 1) * A_w->GetBinError(i + 1, j + 1);
       }
    }
    for (int j = 0; j < kNMcFine; ++j) {
@@ -353,6 +374,7 @@ static CoarseResponse FilterAndCoarsen(const std::string &jetR, const Systematic
       const int mi = coarseIdx(mc);
       if (mi < 0) continue;
       R.x[mi] += xw[j];
+      R.xerr2[mi] += x_w->GetBinError(j + 1) * x_w->GetBinError(j + 1);
    }
    return R;
 }
@@ -417,21 +439,25 @@ void cross_section(const char *systName = "nominal", double lambdaOverride = -1.
                 << "x" << nfloor << ", lambda=" << tikLambda << std::endl;
 
       // M_ij = (b_i / matched_i) * A_ij / x_j, matched_i = in-block row sum
-      // (matched content with truth OUTSIDE the block — buffer feed-down,
-      // below-floor feed-up — is treated as background by the b/matched boost).
-      TMatrixD M(nfloor, nfloor);
-      for (int a = 0; a < nfloor; ++a) {
-         const int i = i0 + a;
-         const double bi = cr.b[i];
-         double mi = 0.0;
-         for (int c = 0; c < nfloor; ++c) mi += cr.A[i][i0 + c];
-         const double rowScale = (mi > 0) ? bi / mi : 0.0;
-         for (int c = 0; c < nfloor; ++c) {
-            const int j = i0 + c;
-            const double xj = cr.x[j];
-            M(a, c) = (xj > 0) ? rowScale * cr.A[i][j] / xj : 0.0;
+      // (matched content with truth OUTSIDE the block — below-floor feed-up —
+      // is treated as background by the b/matched boost).
+      auto buildM = [&](const CoarseResponse &c) -> TMatrixD {
+         TMatrixD Mm(nfloor, nfloor);
+         for (int a = 0; a < nfloor; ++a) {
+            const int i = i0 + a;
+            const double bi = c.b[i];
+            double mi = 0.0;
+            for (int k = 0; k < nfloor; ++k) mi += c.A[i][i0 + k];
+            const double rowScale = (mi > 0) ? bi / mi : 0.0;
+            for (int k = 0; k < nfloor; ++k) {
+               const int j = i0 + k;
+               const double xj = c.x[j];
+               Mm(a, k) = (xj > 0) ? rowScale * c.A[i][j] / xj : 0.0;
+            }
          }
-      }
+         return Mm;
+      };
+      TMatrixD M = buildM(cr);
 
       TVectorD bdata(nfloor), bdataErr2(nfloor);
       for (int a = 0; a < nfloor; ++a) {
@@ -469,23 +495,25 @@ void cross_section(const char *systName = "nominal", double lambdaOverride = -1.
          }
       }
 
-      // ---- solve -------------------------------------------------------------
-      TMatrixD R(nfloor, nfloor);
-      if (tikLambda <= 0.0) {
-         Double_t det = 0.0;
-         TMatrixD Minv(M);
-         Minv.Invert(&det);
-         if (det == 0.0)
-            std::cerr << "[jpx][WARN] filtered M is singular — inversion unreliable" << std::endl;
-         R = Minv;
-      } else {
+      // ---- solve (shared by the nominal and the embedding-stat toys) ---------
+      auto solveR = [&](const TMatrixD &Mm, const CoarseResponse &c) -> TMatrixD {
+         TMatrixD Rr(nfloor, nfloor);
+         if (tikLambda <= 0.0) {
+            Double_t det = 0.0;
+            TMatrixD Minv(Mm);
+            Minv.Invert(&det);
+            if (det == 0.0)
+               std::cerr << "[jpx][WARN] filtered M is singular — inversion unreliable" << std::endl;
+            Rr = Minv;
+            return Rr;
+         }
          // Scale-matched scale-invariant 2nd-difference (curvature) damping:
          // R = (M^T W M + l^2 D^-1 L^T L D^-1)^-1 M^T W, W = diag(1/b_data^2),
          // D = diag(xref) with xref = embedding truth forward-fold-matched to
          // the data scale.
          TVectorD xref(nfloor);
-         for (int a = 0; a < nfloor; ++a) xref[a] = std::max(0.0, cr.x[i0 + a]);
-         TVectorD Mxr = M * xref;
+         for (int a = 0; a < nfloor; ++a) xref[a] = std::max(0.0, c.x[i0 + a]);
+         TVectorD Mxr = Mm * xref;
          double num = 0.0, den = 0.0;
          for (int a = 0; a < nfloor; ++a) {
             num += bdata[a] * Mxr[a];
@@ -508,9 +536,9 @@ void cross_section(const char *systName = "nominal", double lambdaOverride = -1.
             L(r, r + 2) = 1.0;
          }
          TMatrixD Lt(TMatrixD::kTransposed, L);
-         TMatrixD Mt(TMatrixD::kTransposed, M);
+         TMatrixD Mt(TMatrixD::kTransposed, Mm);
          TMatrixD MtW = Mt * W;
-         TMatrixD Areg = MtW * M;
+         TMatrixD Areg = MtW * Mm;
          TMatrixD pen = Dinv * (Lt * L) * Dinv;
          Areg += (tikLambda * tikLambda) * pen;
          Double_t det = 0.0;
@@ -518,15 +546,55 @@ void cross_section(const char *systName = "nominal", double lambdaOverride = -1.
          AregInv.Invert(&det);
          if (det == 0.0)
             std::cerr << "[jpx][WARN] regularized normal matrix singular" << std::endl;
-         R = AregInv * MtW;
-      }
+         Rr = AregInv * MtW;
+         return Rr;
+      };
 
+      TMatrixD R = solveR(M, cr);
       TVectorD xunf = R * bdata;
       TMatrixD B(nfloor, nfloor);
       B.Zero();
       for (int a = 0; a < nfloor; ++a) B(a, a) = bdataErr2[a];
       TMatrixD RT(TMatrixD::kTransposed, R);
       TMatrixD X = R * B * RT;
+
+      // ---- embedding-statistics toys (the response-statistics systematic) ----
+      // Dmitry's simu_stat term: resample the response ingredients within their
+      // statistical errors, re-solve, take the per-bin spread. The variation
+      // writes canonical = nominal +- 1 sigma(toys).
+      if (syst.embStatSign != 0) {
+         const int kToys = 200;
+         gRandom->SetSeed(20260707); // fixed: embStatUp/Down see identical toys
+         std::vector<double> sum(nfloor, 0.0), sum2(nfloor, 0.0);
+         int used = 0;
+         for (int t = 0; t < kToys; ++t) {
+            CoarseResponse ct = cr;
+            for (int i = 0; i < nb; ++i) {
+               ct.b[i] = std::max(0.0, cr.b[i] + gRandom->Gaus(0.0, std::sqrt(cr.berr2[i])));
+               ct.x[i] = std::max(0.0, cr.x[i] + gRandom->Gaus(0.0, std::sqrt(cr.xerr2[i])));
+               for (int j = 0; j < nb; ++j)
+                  if (cr.A[i][j] > 0)
+                     ct.A[i][j] =
+                        std::max(0.0, cr.A[i][j] + gRandom->Gaus(0.0, std::sqrt(cr.Aerr2[i][j])));
+            }
+            TMatrixD Mt = buildM(ct);
+            TMatrixD Rt = solveR(Mt, ct);
+            TVectorD xt = Rt * bdata;
+            ++used;
+            for (int a = 0; a < nfloor; ++a) {
+               sum[a] += xt[a];
+               sum2[a] += xt[a] * xt[a];
+            }
+         }
+         std::cout << "[jpx][embStat] " << used << " toys, per-bin sigma/nominal:";
+         for (int a = 0; a < nfloor; ++a) {
+            const double mean = sum[a] / used;
+            const double sig = std::sqrt(std::max(0.0, sum2[a] / used - mean * mean));
+            printf(" %.1f%%", xunf[a] != 0 ? 100.0 * sig / std::abs(xunf[a]) : 0.0);
+            xunf[a] += syst.embStatSign * sig;
+         }
+         std::cout << std::endl;
+      }
 
       TH1D *h = new TH1D(Form("JPX_unfolded_R%s", jetR.c_str()), ";p_{T} [GeV/c];", nb, grid.data());
       h->SetDirectory(0);

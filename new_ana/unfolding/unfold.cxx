@@ -147,19 +147,21 @@ static void single_unfold(const std::string &trigger, const std::string &jetR, c
       .Define("vertex_weight", [](double vz)    { return VertexReweight::weight(vz); },  {"event_vz"})
       .Define("soft_weight",   [](double pthat) { return SoftReweight::weight(pthat); }, {"pthat_mid"})
       .Define("total_weight",  "mc_weight * vertex_weight * soft_weight")
-      // JES/JER systematic: shift the RECONSTRUCTED energy scale used by the
-      // response. reco_pt_s = reco_pt * (1 + jesShift [+ Gaussian(jerSmear)]);
-      // identity for the nominal (both 0). The DATA is not shifted — shifting the
-      // response reco re-maps the unchanged data. Sentinel -999 (unmatched reco)
-      // is preserved so the presence tests below still work.
+      // Shape systematic: shift the RECONSTRUCTED energy scale used by the
+      // response, per jet — flat (jesShift), EMC rt-weighted
+      // tower(3.2%)/track(1.1%) scale (emcSign), track-efficiency equivalent
+      // 1%*(1-rt) (trkSign), optional Gaussian smear (jerSmear). Identity for
+      // the nominal. The DATA is not shifted — shifting the response reco
+      // re-maps the unchanged data. Sentinel -999 (unmatched reco) is
+      // preserved so the presence tests below still work.
       .DefineSlot("reco_pt_s",
-                  [jes = syst.jesShift, jer = syst.jerSmear](unsigned int, double rpt) -> double {
+                  [syst](unsigned int, double rpt, double rt) -> double {
                      if (rpt < -500.0) return rpt;
-                     double f = 1.0 + jes;
-                     if (jer > 0.0) f += gRandom->Gaus(0.0, jer);
+                     double f = 1.0 + syst.RecoShift(rt);
+                     if (syst.jerSmear > 0.0) f += gRandom->Gaus(0.0, syst.jerSmear);
                      return rpt * f;
                   },
-                  {"reco_pt"});
+                  {"reco_pt", "reco_neutral_fraction"});
 
    // matching_mc_reco.cxx writes mc_pt = -999 / reco_pt = -999 for unmatched halves.
    const double ptMcCut = mcBins.front();
