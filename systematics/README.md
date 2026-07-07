@@ -50,11 +50,19 @@ answerable from the file itself.
 bash systematics/run_systematics.sh
 ```
 
-which (for every trigger in `config.h`):
-1. builds the nominal response + a rebuilt response per shape variation;
-2. runs `cross_section` for every preset → `xsec_<T>_R0.5_<name>.root`;
-3. `combine.C` takes the per-bin up/down envelope → `xsec_<T>_R0.5_systband.root`
-   (`canonical` / `systematic` / `reference`).
+which (for every trigger in `config.h` AND the JPX promotion combination):
+1. builds the nominal response + a rebuilt response per shape variation
+   (per-trigger `response_<T>...` and the JPX fine ingredients
+   `response_JPX_R0.5_fine<tag>.root`);
+2. runs the cross section for every preset → `xsec_<T>_R0.5_<name>.root` and
+   `xsec_JPX_R0.5_<name>.root`;
+3. `combine.C` takes the per-bin up/down envelope (accepting only files whose
+   stamped variation is currently in `Systematics()`) →
+   `xsec_<T>_R0.5_systband.root`, including `<T>` = JPX.
+
+The `nIter` variation is Bayes-only; for the JPX matrix inversion it is a
+no-op re-run of the nominal (its unfolding-regularization systematic is the
+Tikhonov study, `combined/promotion.h::kTikhonovLambda`).
 
 `list_systematics.C` is the single bridge from `Systematics()` to the shell
 (prints the names); edit the sources in `config.h`, nowhere else.

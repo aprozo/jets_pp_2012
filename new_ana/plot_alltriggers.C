@@ -20,13 +20,15 @@
 
 void plot_alltriggers(const char *dir = ".", const char *outname = "comparison_alltriggers_R0.5.pdf")
 {
-   const std::vector<std::string> trigs = {"JP2", "HT2", "JP1", "JP0"};
+   const std::vector<std::string> trigs = {"JPX", "JP2", "HT2", "JP1", "JP0"};
    auto color_for = [](const std::string &t) -> int {
+      if (t == "JPX") return kBlack;
       if (t == "JP2") return kAzure;    if (t == "HT2") return kRed;
       if (t == "JP1") return kOrange-8; if (t == "JP0") return kGreen-2;
       return kMagenta + 1;
    };
    auto marker_for = [](const std::string &t) -> int {
+      if (t == "JPX") return 29;
       if (t == "JP2") return 20; if (t == "HT2") return 21;
       if (t == "JP1") return 22; if (t == "JP0") return 33;
       return 34;

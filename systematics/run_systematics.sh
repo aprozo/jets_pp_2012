@@ -28,21 +28,26 @@ export ROOUNFOLD_HOME=/usr/local/RooUnfold
 export ROOT_INCLUDE_PATH="${ROOUNFOLD_HOME}/src:${ROOT_INCLUDE_PATH:-}"
 export LD_LIBRARY_PATH="${ROOUNFOLD_HOME}:${LD_LIBRARY_PATH:-}"
 
-resp() { cd "$NEW_ANA/unfolding"; root -l -b -q -e 'gSystem->Load("libRooUnfold");' "unfold.cxx+(\"$1\")"; }
-xsec() { cd "$NEW_ANA";           root -l -b -q -e 'gSystem->Load("libRooUnfold");' "cross_section.cpp+(\"$1\")"; }
+resp()  { cd "$NEW_ANA/unfolding"; root -l -b -q -e 'gSystem->Load("libRooUnfold");' "unfold.cxx+(\"$1\")"; }
+xsec()  { cd "$NEW_ANA";           root -l -b -q -e 'gSystem->Load("libRooUnfold");' "cross_section.cpp+(\"$1\")"; }
+jresp() { cd "$NEW_ANA/combined";  root -l -b -q "response.cxx+(\"$1\")"; }
+jxsec() { cd "$NEW_ANA/combined";  root -l -b -q "cross_section.cpp+(\"$1\")"; }
 
 # The committed variation matrix (name + needsResponse) from config.h.
 mapfile -t VARS < <(cd "$HERE" && root -l -b -q list_systematics.C 2>/dev/null | sed -n 's/^SYST //p')
 
 # 1 (nominal response) + 2 (nominal xsec) come from the "nominal" row below.
 resp nominal
+jresp nominal
 for row in "${VARS[@]}"; do
     name=${row%% *}
     needsResp=${row##* }
     if [[ "$name" != nominal && "$needsResp" == 1 ]]; then
         resp "$name"          # rebuild the shifted response for a shape variation
+        jresp "$name"         # same for the JPX combination's fine ingredients
     fi
     xsec "$name"              # unfold + normalize + write xsec_<T>_R0.5<tag>.root
+    jxsec "$name"             # JPX combination (matrix inversion) per variation
 done
 
 # 3: envelope band per trigger

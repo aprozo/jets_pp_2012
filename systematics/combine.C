@@ -97,4 +97,5 @@ void combine()
 {
    for (const auto &t : cfg.triggers)
       combine_one(t);
+   combine_one("JPX"); // the promotion combination (skips cleanly if not produced)
 }
