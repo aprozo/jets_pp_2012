@@ -63,19 +63,51 @@ inline std::string CatJetGate(int cat, const std::string &prefix, const std::str
    return prefix + "trigger_match_JP" + std::to_string(cat) + " && " + CatWindow(cat, ptCol);
 }
 
-// Which trigger's measured data-side correction C(pt) applies to a category
-// (config.h::TrigEffMeas; JP0 has no measured correction -> 1).
-inline const char *CatTrigger(int cat) { return cat == 2 ? "JP2" : (cat == 1 ? "JP1" : "JP0"); }
+// =====================================================================
+// MEASURED combination-level trigger correction C_JPX(pt), applied to the
+// summed data before unfolding (corrections/measure_Cjpx.C, 2026-07-07).
+//
+// C_JPX = C_sum(pt) = eps_data(pt)/eps_emb(pt), the combination's
+// sampling-weighted gate-probability ratio
+//   eps = sum_cat s_cat P(cat gate | pt),  s = {w0, w1, 1},
+// measured for the EXACT promotion gates (exclusive shouldFire category +
+// jp_match veto + windows) on the unbiased fired_JP0 data base vs the
+// total_weight-weighted embedding. The response Misses divide by eps_emb;
+// dividing the data by C_sum closes the pair by construction. It is ONE
+// self-contained in-situ measurement — no inclusive-trigger R/T-hat tables
+// (they do not see the exclusive-category shuffle and over-correct the
+// turn-on by ~half their size).
+//
+// Bin-by-bin in the high-statistics turn-on ([8.2,19), the fired_JP0 base
+// is deep there); the plateau is frozen to the [19,44) pol0 fit 0.9830 —
+// the hardware/simulator ratio is smooth, per-bin base noise (+-2-4%
+// above ~30 GeV) must not inject fake structure. NB the plateau level is
+// R x T_true with T_true = 0.995 for the combination (per-mil, unlike the
+// standalone JP2's ~0.90): dividing it out costs 0.5% normalization and is
+// within the trigger-efficiency systematic.
+// =====================================================================
+inline double JpxTrigEff(double pt)
+{
+   if (pt <  8.2) return 1.0;    // below every solved bin (never quoted)
+   if (pt <  9.7) return 0.8332; // measured C_sum turn-on
+   if (pt < 11.5) return 0.8729;
+   if (pt < 13.6) return 0.9105;
+   if (pt < 16.1) return 0.9490;
+   if (pt < 19.0) return 0.9670;
+   return 0.9830;                // C_sum plateau fit over [19,44)
+}
 
-// ---- fine grid for the response fill (Dmitry's 550x600) --------------------
-// The migration is filled on 0.1 GeV cells (detector 550 bins over [5,60],
-// particle 600 bins over [0,60]), statistically unreliable cells are removed,
-// and only then everything is rebinned to McBins. Every McBins edge <= 52 is
-// a multiple of 0.1 so the rebin is exact; the 52-86 feed-down buffer only
-// collects fine content up to 60 (it is excluded from the inverted block, its
-// feed-down is background-scaled away by the b/matched row factor).
-const int    kNRecoFine = 550;  const double kRecoFineLo = 5.0,  kRecoFineHi = 60.0;
-const int    kNMcFine   = 600;  const double kMcFineLo   = 0.0,  kMcFineHi   = 60.0;
+// ---- fine grid for the response fill ---------------------------------------
+// The migration is filled on 0.1 GeV cells (Dmitry's grid extended to cover
+// the full analysis range), statistically unreliable cells are removed, and
+// only then everything is rebinned to McBins. Every McBins edge is a multiple
+// of 0.1 so the rebin is exact. The axes MUST cover the 52-86 feed-down
+// buffer: Dmitry's own [0,60] caps were fine for his 52-top grid, but with
+// the buffer bin a 60-capped truth axis leaves the buffer column truncated
+// (its reco row is real data up to 80) and the last quoted bin (44-52) swings
+// by +-8% depending on how the incomplete column is treated.
+const int    kNRecoFine = 810;  const double kRecoFineLo = 5.0,  kRecoFineHi = 86.0;
+const int    kNMcFine   = 860;  const double kMcFineLo   = 0.0,  kMcFineHi   = 86.0;
 const double kFineW     = 0.1;
 const int    kBoxRes    = 10; // +-10 fine cells = +-1.0 GeV box
 const int    kBoxThresh = 4;  // zero cells whose box entry-sum is <= 4
@@ -86,7 +118,13 @@ const int    kBoxThresh = 4;  // zero cells whose box entry-sum is <= 4
 // combination is populated down to 6.9 via cat0 but those prescale-deep bins
 // can make the unregularized inverse ring — study by editing here.
 const double kJpxFloor = 9.7;
-const double kQuoteHi  = 52.0; // 52-86 buffer never inverted, never quoted
+const double kQuoteHi  = 86.0; // include the 52-86 feed-down buffer as a real
+                               // solved column/row (its reco row is real data,
+                               // 52-80); solved, never quoted. With the buffer
+                               // excluded (Dmitry's 52 cut) its feed-down is
+                               // background-scaled instead and the 44-52 bin
+                               // comes out +7% — the standalone square solver
+                               // (cross_section_inverse) keeps the buffer too.
 
 // Optional Tikhonov damping of the block solve (0 = plain M^-1 = Dmitry).
 // Scale-matched second-difference penalty on the unfolded/embedding-truth

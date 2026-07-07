@@ -182,29 +182,27 @@ static std::unique_ptr<TH1D> RawCombined(const std::string &jetR, const Systemat
       for (int c = 0; c < 3; ++c) cat[c]->SetDirectory(0);
    }
 
-   // Measured trigger correction per category: divide the hardware-gated data
-   // by C(pt) = R x T-hat (config.h) to move it onto the simulator ruler the
-   // response is built on. cat0 (JP0) has no measured correction (C = 1).
-   double nJets[3] = {0, 0, 0};
-   for (int c = 0; c < 3; ++c) {
-      nJets[c] = cat[c]->Integral();
-      for (int i = 1; i <= cat[c]->GetNbinsX(); ++i) {
-         const double p =
-            TrigEffMeas(CatTrigger(c), cat[c]->GetXaxis()->GetBinCenter(i)) * syst.trigEffScale;
-         if (p > 0) {
-            cat[c]->SetBinContent(i, cat[c]->GetBinContent(i) / p);
-            cat[c]->SetBinError(i, cat[c]->GetBinError(i) / p);
-         }
-      }
-   }
-   std::cout << "[jpx][data] category jets (raw): cat0=" << nJets[0] << "  cat1=" << nJets[1]
-             << "  cat2=" << nJets[2] << std::endl;
+   std::cout << "[jpx][data] category jets (raw): cat0=" << cat[0]->Integral()
+             << "  cat1=" << cat[1]->Integral() << "  cat2=" << cat[2]->Integral() << std::endl;
 
    TH1D *sum = (TH1D *)cat[2]->Clone(Form("JPX_raw_R%s", jetR.c_str()));
    sum->SetDirectory(0);
    sum->Add(cat[1]);
    sum->Add(cat[0]);
    for (int c = 0; c < 3; ++c) delete cat[c];
+
+   // Measured combination-level trigger correction: divide the summed
+   // hardware-gated data by C_JPX(pt) = That_sum (turn-on) then R (plateau
+   // ruler) — promotion.h::JpxTrigEff, measured for the exact promotion gates.
+   std::cout << "[jpx][data] dividing by C_JPX(pt) (promotion.h JpxTrigEff), trigEffScale "
+             << syst.trigEffScale << std::endl;
+   for (int i = 1; i <= sum->GetNbinsX(); ++i) {
+      const double p = JpxTrigEff(sum->GetXaxis()->GetBinCenter(i)) * syst.trigEffScale;
+      if (p > 0) {
+         sum->SetBinContent(i, sum->GetBinContent(i) / p);
+         sum->SetBinError(i, sum->GetBinError(i) / p);
+      }
+   }
    return std::unique_ptr<TH1D>(sum);
 }
 
@@ -376,11 +374,14 @@ void cross_section(const char *systName = "nominal", double lambdaOverride = -1.
    gStyle->SetOptStat(0);
    TH1::SetDefaultSumw2();
 
-   const double tikLambda = (lambdaOverride >= 0.0) ? lambdaOverride : kTikhonovLambda;
-   const double jpxFloor = (floorOverride >= 0.0) ? floorOverride : kJpxFloor;
-
    const Systematic syst = FindSystematic(systName);
    std::cout << "[jpx] systematic = " << syst.name << std::endl;
+
+   // Damping precedence: explicit study argument > the variation's jpxLambda
+   // (the "jpxDamp" unfolding systematic) > the promotion.h default.
+   const double tikLambda =
+      (lambdaOverride >= 0.0) ? lambdaOverride : (syst.jpxLambda >= 0.0 ? syst.jpxLambda : kTikhonovLambda);
+   const double jpxFloor = (floorOverride >= 0.0) ? floorOverride : kJpxFloor;
 
    AppendBadRunsFromFile(cfg.workdir + "../lists/dmitry_extras.list");
 
@@ -436,6 +437,36 @@ void cross_section(const char *systName = "nominal", double lambdaOverride = -1.
       for (int a = 0; a < nfloor; ++a) {
          bdata[a] = hData->GetBinContent(i0 + a + 1);
          bdataErr2[a] = hData->GetBinError(i0 + a + 1) * hData->GetBinError(i0 + a + 1);
+      }
+
+      // QA: fold the REFERENCE truth through M and compare with the data
+      // vector, row by row — localizes any residual as data-side (shows up
+      // here) vs solve-side (does not). Approximate in the buffer row (the
+      // reference stops at 52).
+      {
+         const std::string refPath =
+            Form((cfg.workdir + "jet_cross_section_dmitriyR%s.root").c_str(), jetR.c_str());
+         if (!gSystem->AccessPathName(refPath.c_str())) {
+            TFile rf(refPath.c_str(), "READ");
+            auto *r = (TH1D *)rf.Get("crossSection_systematic");
+            if (r) {
+               const double Lfold = RuntimeLeff(cfg, "JP2");
+               TVectorD xref(nfloor);
+               for (int a = 0; a < nfloor; ++a) {
+                  const int j = i0 + a;
+                  const double lo = grid[j], hi = grid[j + 1];
+                  const int rb = r->FindBin(0.5 * (lo + hi));
+                  const double v = r->GetBinContent(rb); // dsigma/dpt/deta
+                  // back to raw counts: x_j = v * dpt * (2*deta) * L
+                  xref[a] = v * (hi - lo) * 2.0 * (1.0 - std::stod(jetR)) * Lfold;
+               }
+               TVectorD bpred = M * xref;
+               std::cout << "[jpx][fold-QA] b_data / (M x Dmitry-truth)  per reco bin:\n";
+               for (int a = 0; a < nfloor; ++a)
+                  printf("    [%5.1f,%5.1f)  data=%10.4g  pred=%10.4g  ratio=%6.3f\n", grid[i0 + a],
+                         grid[i0 + a + 1], bdata[a], bpred[a], bpred[a] > 0 ? bdata[a] / bpred[a] : 0.0);
+            }
+         }
       }
 
       // ---- solve -------------------------------------------------------------
