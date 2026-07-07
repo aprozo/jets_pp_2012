@@ -1,6 +1,22 @@
 #ifndef CROSS_SECTION_CONFIG_H
 #define CROSS_SECTION_CONFIG_H
+//
+// Shared configuration for the Stage-2 physics pipeline. NO environment flags —
+// every choice is hardcoded to its validated physical value and edited here.
+//   unfolding/unfold.cxx      builds the Miss/Fake response per trigger
+//   cross_section.cpp         unfolds (RooUnfoldBayes), normalizes, writes xsec
+//   cross_section_inverse/    the same, unfolded by Dmitry's matrix inversion
+//   plot_alltriggers.C        overlays every trigger against Dmitry's Table III
+//
+// Triggers are ANALYSIS FILTERS, not a production split: one Stage-1 production
+// (merged_data_R<R>.root, merged_matching_R<R>.root) carries every trigger's
+// per-jet trigger_match_<T> / per-event fired_<T> bit, selected here at Stage-2.
+// The data-side trigger correction is the measured HYBRID C(pt) = T-hat (turn-on)
+// then R (plateau ruler) — both physical, applied before unfolding. Each trigger
+// is quoted only in its efficient window (QuoteLo); below it the standalone
+// spectrum is turn-on extrapolation, not a measurement, and is dropped.
 
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -8,87 +24,242 @@
 #include <unordered_map>
 #include <vector>
 
+#include <TColor.h>
+#include <TNamed.h>
+#include <TString.h>
+
 namespace CrossSectionConfig {
 
-// // PT binning for reconstructed jets (reco-level)
-const std::vector<double> pt_reco_bins = {
-    10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0,
-    21.0, 22.0, 23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0,
-    32.0, 33.0, 34.0, 35.0, 36.0, 37.0, 38.0, 39.0, 40.0, 42.0, 44.0,
-    46.0, 48.0, 50.0, 52.0, 54.0, 56.0, 58.0, 60.0, 68.0, 80.0, 90.0};
-// PT binning for MC truth jets (particle-level)
-const std::vector<double> pt_mc_bins = {5.0,  6.9,  8.2,  9.7,  11.5,
-                                        13.6, 16.1, 19.0, 22.5, 26.6,
-                                        31.4, 37.2, 44.0, 52.0, 80.0};
+// ---- fixed paths (edit here if the repo moves) -----------------------------
+const std::string kWorkDir  = "/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/new_ana/";
+const std::string kDataPath = "/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/output/";
 
-std::unordered_map<int, int> LoadRunToBinMap(const std::string &path) {
-  std::unordered_map<int, int> m;
-  std::ifstream in(path.c_str());
-  if (!in)
-    throw std::runtime_error("Cannot open: " + path);
+// ---- fixed analysis choices ------------------------------------------------
+const int kNIter      = 2; // RooUnfoldBayes iterations (validated: no rising tail)
+const int kImtThreads = 4; // bounded IMT (unbounded IMT over gpfs on >4GB trees segfaults)
 
-  std::string line;
-  int run = 0, bin = 0;
+// Allocate the custom ROOT color slots used throughout the analysis.
+inline void DefineCustomColors()
+{
+   static bool defined = false;
+   if (defined)
+      return;
+   defined = true;
 
-  while (std::getline(in, line)) {
-    bin++; // histograms start from 1
-    // allow comments / blank lines
-    if (line.empty())
-      continue;
-    if (line[0] == '#')
-      continue;
-    std::istringstream ss(line);
-    if (!(ss >> run))
-      continue; // or throw if you want strict parsing
-
-    m[run] = bin;
-  }
-  return m;
+   new TColor(2000, 255 / 255., 89 / 255., 74 / 255.);
+   new TColor(2001, 25 / 255., 170 / 255., 25 / 255.);
+   new TColor(2002, 66 / 255., 98 / 255., 255 / 255.);
+   new TColor(2003, 153 / 255., 0 / 255., 153 / 255.);
+   new TColor(2004, 255 / 255., 166 / 255., 33 / 255.);
+   new TColor(2005, 0 / 255., 170 / 255., 255 / 255.);
+   new TColor(2006, 204 / 255., 153 / 255., 255 / 255.);
+   new TColor(2007, 107 / 255., 142 / 255., 35 / 255.);
+   new TColor(2008, 100 / 255., 149 / 255., 237 / 255.);
+   new TColor(2009, 255 / 255., 69 / 255., 0 / 255.);
+   new TColor(2010, 0 / 255., 128 / 255., 128 / 255.);
+   new TColor(2011, 176 / 255., 196 / 255., 222 / 255.);
+   new TColor(2012, 255 / 255., 215 / 255., 0 / 255.);
 }
 
-// Analysis configuration
+// Per-trigger reco-pT validity floor (GeV, on the UE-subtracted reco pT): the
+// start of the trigger's efficient region. Shared by the data selection
+// (cross_section.cpp::Raw) and the response reco side (unfold.cxx).
+inline double TrigPtFloor(const std::string &trigger)
+{
+   if (trigger == "JP2") return 9.7;
+   if (trigger == "JP1") return 8.2;
+   if (trigger == "JP0") return 6.9;
+   if (trigger == "HT2") return 11.5;
+   return 0.0;
+}
+
+// Per-trigger QUOTE-window low edge (GeV): the lowest pT the trigger is quoted
+// at. Below it the standalone spectrum is unfolding extrapolation below the
+// turn-on, so it is dropped from the quoted spectrum and the comparison.
+inline double QuoteLo(const std::string &trigger)
+{
+   if (trigger == "JP2") return 13.6;
+   if (trigger == "JP1") return 8.2;
+   if (trigger == "JP0") return 13.6;
+   if (trigger == "HT2") return 11.5;
+   return 0.0;
+}
+
+// PT binning for reconstructed jets (reco-level): fine 1-GeV mid-pT, coarser
+// high-pT. Bayes regularization works better when reco bins are finer than truth.
+const std::vector<double> pt_reco_bins = {6.9, 8.2, 9.7, 11.5, 12.5, 13.5, 14.5, 15.5, 16.5, 17.5, 18.5,
+                                          19.5, 20.5, 21.5, 22.5, 23.5, 24.5, 25.5, 26.5, 27.5, 28.5, 29.5,
+                                          30.5, 31.5, 32.5, 33.5, 34.5, 35.5, 36.5, 37.5, 38.5, 39.5, 41.0,
+                                          43.0, 45.0, 47.0, 49.0, 51.0, 53.0, 55.0, 57.0, 60.0, 68.0, 80.0};
+// MC truth bins (Dmitry-aligned). The trailing 52->86 cell is a FEED-DOWN
+// BUFFER (never quoted): it catches matched pairs whose truth mc>52 but whose
+// reco (~0.8x mc) still lands in the measured 40-52 region, so the last QUOTED
+// bin (44-52) passes train/test closure.
+const std::vector<double> pt_mc_bins = {6.9,  8.2,  9.7,  11.5, 13.6, 16.1, 19.0, 22.5,
+                                        26.6, 31.4, 37.2, 44.0, 52.0, 86.0};
+
+inline const std::vector<double> &McBins()   { return pt_mc_bins; }
+inline const std::vector<double> &RecoBins() { return pt_reco_bins; }
+
+// =====================================================================
+// MEASURED trigger correction C(pt), applied to the JP1/JP2 data before
+// unfolding (cross_section.cpp::Raw). HYBRID: T-hat (turn-on, pt<16.1) then R
+// (plateau ruler, pt>=16.1).
+// =====================================================================
+// T-hat = [P(emulator-match|pt) data(JP0-fired base) / embedding] — the residual
+// data-vs-embedding turn-on SHAPE (the embedding calorimeter fires "hotter" than
+// the real one). R = the hardware-vs-software match ratio, applied ONLY on the
+// plateau (below 16.1 T-hat already carries the hardware/software mismatch, so
+// multiplying R in there double-counts it). JP0 / HT2 get no correction.
+inline double TrigEffMeas(const std::string &trigger, double pt)
+{
+   if (trigger == "JP1") {
+      if      (pt <  8.2) return 0.8339; // T-hat turn-on
+      else if (pt <  9.7) return 0.8957;
+      else if (pt < 11.5) return 0.9378;
+      else if (pt < 13.6) return 0.9707;
+      else if (pt < 16.1) return 0.9929;
+      else if (pt < 19.0) return 0.9725; // R plateau (ruler)
+      else if (pt < 22.5) return 0.9741;
+      else if (pt < 26.6) return 0.9783;
+      else if (pt < 31.4) return 0.9877;
+      else if (pt < 37.2) return 0.9744;
+      else                return 1.0;
+   }
+   if (trigger == "JP2") {
+      if      (pt <  8.2) return 0.5266; // T-hat turn-on
+      else if (pt <  9.7) return 0.6630;
+      else if (pt < 11.5) return 0.7737;
+      else if (pt < 13.6) return 0.8607;
+      else if (pt < 16.1) return 0.9575;
+      else if (pt < 19.0) return 0.9571; // R plateau (ruler)
+      else if (pt < 22.5) return 0.9814;
+      else if (pt < 26.6) return 0.9954;
+      else if (pt < 31.4) return 1.0000;
+      else if (pt < 37.2) return 0.9722;
+      else                return 1.0;
+   }
+   return 1.0; // JP0 / HT2: no data-side trigger correction
+}
+
+std::unordered_map<int, int> LoadRunToBinMap(const std::string &path)
+{
+   std::unordered_map<int, int> m;
+   std::ifstream in(path.c_str());
+   if (!in)
+      throw std::runtime_error("Cannot open: " + path);
+
+   std::string line;
+   int run = 0, bin = 0;
+   while (std::getline(in, line)) {
+      bin++; // histograms start from 1
+      if (line.empty() || line[0] == '#')
+         continue;
+      std::istringstream ss(line);
+      if (!(ss >> run))
+         continue;
+      m[run] = bin;
+   }
+   return m;
+}
+
 struct AnalysisConfig {
-  std::string workdir = "/home/prozorov/dev/star/jets_pp_2012/new_ana/";
-  std::string datapath = "/home/prozorov/dev/star/jets_pp_2012/output/";
+   std::string workdir  = kWorkDir;
+   std::string datapath = kDataPath;
 
-  std::unordered_map<int, int> runMap =
-      LoadRunToBinMap(workdir + "run_map.txt");
+   std::unordered_map<int, int> runMap = LoadRunToBinMap(workdir + "run_map.txt");
 
-  // Available triggers
-  std::vector<std::string> triggers = {"JP2", "HT2"};
-  std::vector<std::string> jetRs = {"0.5", "0.6"};
-  // Bad runs to exclude (JP2 trigger)
-  std::vector<int> badRuns = {
-      13070061, 13048019, 13048092, 13048093, 13049006,
-      13049007, 13051074, 13051099, 13052061, 13061035,
-      13064067, 13068060, 13069023, 13063012
+   // Triggers processed by every run (edit the list to run a subset). Jet
+   // radius fixed at R=0.5.
+   std::vector<std::string> triggers = {"JP0", "JP1", "JP2", "HT2"};
+   std::vector<std::string> jetRs = {"0.5"};
 
-      // // ///////extra strict runs
-      // ,
-      // 13043029, 13043034, 13043046, 13043062, 13044015, 13045123, 13045139,
-      // 13046009, 13046016, 13046022, 13046027, 13046116, 13047021, 13047121,
-      // 13048009, 13048010, 13048011, 13048012, 13048013, 13048014, 13048015,
-      // 13048016, 13048017, 13048018, 13048030, 13048031, 13048032, 13048040,
-      // 13048041, 13048042, 13048043, 13048044, 13048045, 13048049, 13048050,
-      // 13048051, 13048052, 13048053, 13048087, 13048088, 13048089, 13048090,
-      // 13048091,
+   // Dmitry's bad runs (8 dmitry-bad + 7 deadtime). The runtime Leff in
+   // cross_section.cpp follows this list automatically.
+   std::vector<int> badRuns = {
+      13050011, 13059087, 13055015, 13069004, 13066101,
+      13066102, 13066104, 13066109,
+      13048092, 13049006, 13049007, 13051074, 13052061, 13069023, 13070061
+   };
 
-      // 13065018, 13050023, 13057019,
-      // ////
-      // 13063022, 13057009,
-      // ////
-      // 13071064, 13072002, 13072003, 13072005
-  };
-
-  // Number of unfolding iterations (Bayesian)
-  int nIterations = 4;
+   int nIterations = kNIter;
 };
 
-// Color palette for plots
-const std::vector<int> colors = {2000, 2002, 2003, 2004,
-                                 2005, 2006, 2007, 2008};
+// ====================== SYSTEMATIC VARIATIONS (config-as-code) ======================
+// A systematic is a named DELTA from the nominal — a typed, committed object, not
+// an env var or a text row. The pipeline macros take a variation NAME as an
+// argument (default "nominal" = identity) and look up its Systematic here.
+//   jesShift/jerSmear  shift the reconstructed energy in the RESPONSE -> SHAPE
+//                       systematics; the response is rebuilt (needsResponse()).
+//   lumiScale          luminosity scale (the spectrum is divided by it).
+//   trigEffScale       flat scale on C(pt)  (the spectrum is divided by it).
+//   nIter              RooUnfoldBayes iterations (unfolding systematic; reuses the
+//                       nominal response).
+// The variation name is stamped into every output ROOT file (provenance), so the
+// config travels with the data.
+struct Systematic {
+   std::string name;
+   double jesShift = 0.0;     // fractional reco energy-scale shift (response)
+   double jerSmear = 0.0;     // fractional extra Gaussian reco smear (response)
+   double lumiScale = 1.0;    // luminosity scale
+   double trigEffScale = 1.0; // flat scale on C(pt)
+   int    nIter = kNIter;     // Bayes iterations
+   Systematic() = default;
+   Systematic(std::string n) : name(n) {} // for {"nominal"} and the factories below
+   bool needsResponse() const { return jesShift != 0.0 || jerSmear != 0.0; }
+};
 
-// Marker styles for plots
+// Named constructors (C++17: no designated initializers) — each makes the intent
+// of a variation obvious at the definition site.
+inline Systematic SystJES(const std::string &n, double jes)  { Systematic s; s.name = n; s.jesShift = jes; return s; }
+inline Systematic SystJER(const std::string &n, double jer)  { Systematic s; s.name = n; s.jerSmear = jer; return s; }
+inline Systematic SystNorm(const std::string &n, double lumi, double trig) { Systematic s; s.name = n; s.lumiScale = lumi; s.trigEffScale = trig; return s; }
+inline Systematic SystIter(const std::string &n, int ni)     { Systematic s; s.name = n; s.nIter = ni; return s; }
+
+// The committed systematic matrix. Add or remove sources by editing this list.
+// (JES/JER values here are illustrative — set them to the measured 1-sigma
+// uncertainties. Luminosity is a correlated NORMALIZATION uncertainty and is
+// usually quoted separately, not folded into the per-bin band.)
+inline std::vector<Systematic> Systematics()
+{
+   return {
+      {"nominal"},
+      SystJES("jesUp", +0.03), SystJES("jesDown", -0.03),
+      SystJER("jerUp", 0.05),
+      SystNorm("trigEffUp", 1.0, 1.05), SystNorm("trigEffDown", 1.0, 0.95),
+      SystNorm("lumiUp", 1.086, 1.0),   SystNorm("lumiDown", 0.914, 1.0),
+      SystIter("unfoldReg", 3), // Bayes nIter 2->3 (regularization dependence)
+   };
+}
+
+inline Systematic FindSystematic(const std::string &name)
+{
+   for (const auto &s : Systematics())
+      if (s.name == name)
+         return s;
+   throw std::runtime_error("unknown systematic: " + name);
+}
+
+// Output-filename tag (""=nominal).
+inline std::string SystTag(const Systematic &s)
+{
+   return (s.name == "nominal" || s.name.empty()) ? std::string("") : ("_" + s.name);
+}
+
+// Provenance: write the full variation config as TNamed keys into the currently
+// open TFile (call after cd-ing into it), so "what produced this histogram" is
+// answerable from the file itself.
+inline void StampProvenance(const Systematic &s)
+{
+   TNamed("variation", s.name.c_str()).Write();
+   TNamed("jesShift", Form("%.4f", s.jesShift)).Write();
+   TNamed("jerSmear", Form("%.4f", s.jerSmear)).Write();
+   TNamed("lumiScale", Form("%.4f", s.lumiScale)).Write();
+   TNamed("trigEffScale", Form("%.4f", s.trigEffScale)).Write();
+   TNamed("nIter", Form("%d", s.nIter)).Write();
+}
+
+const std::vector<int> colors = {2000, 2002, 2003, 2004, 2005, 2006, 2007, 2008};
 const std::vector<int> markers = {20, 21, 22, 23, 33, 34};
 
 } // namespace CrossSectionConfig
