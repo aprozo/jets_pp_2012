@@ -1,0 +1,69 @@
+\documentclass[10pt,usenames,dvipsnames,xcolor,aspectratio=169]{beamer}
+\usetheme{Singapore}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{lmodern}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes}
+
+%-----------------colors that i'll use---------------------------
+\definecolor{ballblue}{rgb}{0.13,0.67,0.8}
+\setbeamercolor{structure}{fg=ballblue}
+
+\definecolor{myblue}{HTML}{4262ff}   % #4262ff
+\definecolor{myviolet}{HTML}{9b059b} % #9b059b
+\definecolor{myred}{HTML}{ff4500}    % #ff4500
+\definecolor{mygreen}{HTML}{1aaa1a}  % #1aaa1a
+\definecolor{myorange}{HTML}{ffa621} % #ffa621
+\definecolor{myyellow}{HTML}{ffdb00} % #ffdb00
+\definecolor{mygrey}{HTML}{b3b3b3}   % #b3b3b3
+\definecolor{mypink}{HTML}{cc99ff}   % #cc99ff
+
+\newcommand{\pt}{p_{\mathrm{T}}}
+\newcommand{\ok}[1]{\textcolor{mygreen}{#1}}
+\newcommand{\bad}[1]{\textcolor{myred}{#1}}
+
+\tikzstyle{proc} = [rectangle, rounded corners, minimum height=1.1cm, text centered,
+                    draw=black, fill=ballblue!18, font=\footnotesize]
+\tikzstyle{arr}  = [thick,-{Stealth[length=3mm]}]
+
+% which luminosity table a number comes from
+\newcommand{\srcJ}{^{\textcolor{myorange}{\mathbf{J}}}}
+\newcommand{\srcZ}{^{\textcolor{myviolet}{\mathbf{Z}}}}
+
+\makeatletter
+\setbeamertemplate{footline}
+{
+  \leavevmode%
+  \hbox{%
+  \begin{beamercolorbox}[wd=.333333\paperwidth,ht=2.25ex,dp=2ex,center]{author in head/foot}%
+    \usebeamerfont{author in head/foot}%
+  \insertshortauthor\hspace{1em}\beamer@ifempty{\insertshortinstitute}{}{(\insertshortinstitute)}
+  \end{beamercolorbox}%
+  \begin{beamercolorbox}[wd=.333333\paperwidth,ht=2.25ex,dp=2ex,center]{title in head/foot}%
+    \usebeamerfont{title in head/foot}\insertshorttitle
+  \end{beamercolorbox}%
+  \begin{beamercolorbox}[wd=.333333\paperwidth,ht=2.25ex,dp=2ex,right]{date in head/foot}%
+    \usebeamerfont{date in head/foot}\insertshortdate{}\hspace*{2em}
+    \insertframenumber{} / \inserttotalframenumber\hspace*{2ex}
+  \end{beamercolorbox}}%
+  \vskip0pt%
+}
+\makeatother
+
+\graphicspath{{figs/}}
+\setbeamercovered{transparent}
+\setbeamertemplate{navigation symbols}{}
+
+\title[Inclusive jets pp 200 GeV -  update]{Inclusive jet cross section, $pp$ at 200 GeV}
+\subtitle{Progress update}
+\author[Alexandr~Prozorov]{Alexandr~Prozorov}
+\institute[CTU]{Czech Technical University in Prague}
+\date[\today]{\today}
+
+%--------------------------------------------------------------------------------------------%
+%                                   PRESENTATION                                              %
+%--------------------------------------------------------------------------------------------%
