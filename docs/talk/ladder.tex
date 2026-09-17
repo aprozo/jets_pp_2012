@@ -1,0 +1,138 @@
+% ===========================================================================
+% The ladder: from the reproduction of the published result (matrix inversion, 2021 embedding) to the target
+% configuration (Bayesian unfolding, 2023 embedding), one ingredient per slide.
+% Figures: bash new_ana/published/run.sh ladder   (plot_ladder.C -> new_ana/results/figures/, copies in docs/talk/); bash new_ana/plots.sh for the rest
+% Compile: pdflatex -interaction=nonstopmode ladder.tex (twice)
+% ===========================================================================
+\input{preamble.tex}
+\newcommand{\fig}[2][0.80]{\centering\includegraphics[width=#1\textwidth,height=0.66\textheight,keepaspectratio]{#2}\par\vspace{-1mm}}
+\newcommand{\figs}[2][0.62]{\centering\includegraphics[width=#1\textwidth,height=0.50\textheight,keepaspectratio]{#2}\par\vspace{-1mm}}
+\newcommand{\capt}[1]{{\footnotesize\raggedright #1\par}}
+\newcommand{\msg}[1]{{\small\textbf{#1}\par\vspace{1mm}}}
+\title[Inversion to Bayes, 2021 to 2023]{Inclusive jet cross section in $pp$ at 200 GeV: from the published construction to Bayesian unfolding}
+\subtitle{anti-$k_T$, $R=0.5$, $|\eta|<0.5$; every step compared with STAR Run-12, PRD, Table III}
+\author{A.~Prozorov}
+\date{8 September 2026}
+\begin{document}
+\begin{frame}\titlepage\end{frame}
+
+\begin{frame}{What is compared, and what changes from slide to slide}
+\begin{columns}[T]
+\column{0.50\textwidth}
+\msg{Fixed on every slide}
+\begin{itemize}\footnotesize
+\item Data: exclusive trigger levels $l_0$ (JP0), $l_1$ (JP1), $l_2$ (JP2), built with the offline trigger simulator; raw-$p_T$ floors 0 / 6.0 / 8.4~GeV; detector windows $l_0<22.5$, $l_1>8.2$, $l_2>9.7$~GeV; luminosity per level over the 585 runs of the publication.
+\item Response: particle jets from every generated event; detector jets with $|v_z|<60$~cm and a vertex within 5~cm of the thrown one; $\Delta R<0.2$ pairing; $2\times2$ blocks in $\eta$; the published outlier filter; soft reweight; $\sigma$ corrections.
+\item Purity (matched/reconstructed) and efficiency (matched/generated) per bin.
+\end{itemize}
+\column{0.48\textwidth}
+\msg{Two things change}
+\begin{itemize}\footnotesize
+\item \textbf{Unfolding}: matrix inversion $x=M^{-1}b$ (as published) or Bayesian (RooUnfoldBayes, Pythia prior, $N$ iterations).
+\item \textbf{Embedding}: the 2021 request (Cold QCD, 20212001; the sample of the publication) or the 2023 request (HP, 20235003). Same generator, same pipeline, different production.
+\end{itemize}
+\msg{Error bars}
+\begin{itemize}\footnotesize
+\item Statistical only, from the data counts of every level propagated through the unfolding. No systematic uncertainties on our points; the published systematic band is shown in amber.
+\end{itemize}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Step 1: the reproduction (inversion, 2021 embedding)}
+\fig[0.84]{ladder_rung1.pdf}
+\capt{Mean ratio 1.001, $\chi^2/{\rm ndf}=9.2/12$ against the published statistical errors, every bin within 2.1\%. The last bin carries a 15\% statistical error.}
+\end{frame}
+
+\begin{frame}{Step 2: only the unfolding method changes (2021 embedding)}
+\fig{ladder_rung2.pdf}
+\capt{Same data, same response, same purity and efficiency. Bayes moves single bins by up to 5\% at 4 iterations, less with more; the 14.85~GeV dip is a statistical fluctuation of the JP0 level in the published point, which the inversion reproduces and the prior smooths away.}
+\end{frame}
+
+\begin{frame}{Why the inversion error bars are larger than the Bayesian ones}
+\figs[0.66]{ladder_errors.pdf}
+\begin{itemize}\footnotesize
+\item Both bars propagate the same data counts. The inversion propagates them through the exact inverse of the migration matrix, which amplifies fluctuations and anticorrelates neighbouring bins; the published errors are of this type and coincide with ours above 26~GeV.
+\item Bayes with few iterations propagates them through a regularised operator that keeps most of the prior: the bar shrinks by a factor 3 to 7 at 4 iterations, and grows back towards the inversion as the iterations increase (30 and 100 shown). The bar is a property of the regularisation, not of the data alone.
+\item What the Bayesian bar leaves out is the price of that regularisation: the dependence on the prior and on the number of iterations, which moves single bins by up to 4\% (previous slide) while the bars are 0.2--0.5\%. The two sets of bars are therefore not comparable bin by bin.
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Why the published inversion errors are smaller than ours below 22.5~GeV}
+\figs[0.66]{ladder_errors.pdf}
+\begin{itemize}\footnotesize
+\item The detector spectrum is a weighted sum over the trigger levels, $b_i=\sum_l n_{l,i}/L_l$, with weights $1/L_l$ that differ by up to 48 (JP0 against JP1). Its exact variance is $\sum_l n_{l,i}/L_l^2$; the publication uses $b_i^2/N_i$ with $N_i$ the plain number of entries, i.e. it treats the sum as a single Poisson count.
+\item The two agree where one level dominates a bin (6.9--8.2~GeV: JP0 alone; above 22.5~GeV: JP2 alone) and differ where a high-weight level adds few entries: in 8.2--22.5~GeV the exact variance is 2.5--4.4 times the published estimator, hence 1.6--3.9 times larger error bars.
+\item Applying the published estimator to our inversion reproduces the published bars bin by bin (open circles: 0.48\% against 0.50\% at 10.6~GeV, 0.90\% against 1.00\% at 20.8~GeV, identical above 24~GeV). Our bars are the exact ones; the central values are unaffected.
+\end{itemize}
+\end{frame}
+
+\begin{frame}{The two methods also correlate the bins differently}
+\figs[0.80]{ladder_corr.pdf}
+\capt{Statistical correlation matrices of the unfolded bins ($|\eta|<0.5$). The inversion anticorrelates neighbouring bins, so the visible scatter of its points is larger than a bin-by-bin reading of the bars suggests; the Bayesian result correlates them positively. A fair comparison of the two methods uses the full covariance, or the total uncertainty with the iteration dependence included.}
+\end{frame}
+
+\begin{frame}{The two ingredients against each other, without the published reference}
+\begin{columns}[T]
+\column{0.5\textwidth}\centering\includegraphics[width=\textwidth]{ladder_method.pdf}
+\column{0.5\textwidth}\centering\includegraphics[width=\textwidth]{ladder_embedding.pdf}
+\end{columns}
+\capt{Left: Bayes (4 it.) over inversion on the same data and the same embedding, once per embedding. The method moves single bins by up to 5\% (2021) and 6\% (2023), with the same dips at 14.85~GeV and in the last bins on both; the extra scatter on 2023 is the statistical see-saw of that inversion, which the prior smooths. Right: 2023 over 2021 embedding at fixed method. Both methods see the same coherent excess from the 2023 sample, 4\% below 16~GeV falling to 1.5\% above 30~GeV (smooth with Bayes, see-sawing with the inversion). No error bars: the compared results share the data.}
+\end{frame}
+
+\begin{frame}{Step 3: only the embedding changes (inversion)}
+\fig{ladder_rung3.pdf}
+\capt{The 2023 sample gives 0.2--0.9\% less detector $p_T$ per unit of particle $p_T$ than the 2021 one, and 1--3\% lower efficiency below 13.6~GeV (jets crossing the 6.9~GeV edge): a 5\% yield effect at 9~GeV falling to 2\% at 40~GeV. The run mix, the reconstruction chain, the vertex and the pileup are excluded; the difference is in the truth definition (two slides on). Calibrating the 2023 detector $p_T$ to the 2021 scale, bin by bin, removes the coherent offset.}
+\end{frame}
+
+\begin{frame}{Why the two embeddings differ: the truth record, not the detector}
+\fig[0.70]{../../new_ana/results/figures/published_embedding_diff_generator.pdf}
+\capt{Ratios 2023 / 2021 of the generated jets at the same particle $p_T$: 2023 has 5--9\% fewer constituents, a 3\% higher neutral fraction, a harder leading particle, a 6--8\% lower particle-level $\rho$ and a 2--5\% higher generated spectrum. The 2021 generator record stores $\pi^0$, $\eta$ and $\Sigma^0$ decayed (35\% of its particles are photons); the 2023 record keeps them undecayed (26\% $\pi^0$, 4\% $\eta$). In 2021 the decay photons below the 0.2~GeV constituent cut are lost (3.6\% of the generated $p_T$, 1.7\% in 2023) and the larger $\rho$ subtracts more, so the 2021 truth jet is 0.2--0.9\% softer for the same detector jet, and the 2021 result 2--4\% lower.}
+\end{frame}
+
+\begin{frame}{The detector level at fixed particle $p_T$ is identical}
+\fig[0.70]{../../new_ana/results/figures/published_embedding_diff_detector.pdf}
+\capt{Same ratios for the detector side: resolution, neutral fraction, constituents and leading fraction of the detector jet, background density (0.686~GeV in both), vertex acceptance (2.0\% in both) and efficiency above 14~GeV agree within 0.5\%. Only $\langle p_T^{\rm det}/p_T^{\rm part}\rangle$ departs, by 0.2--1\%, and that is the truth $p_T$ in the denominator. GEANT decays the neutral mesons in both productions, so the detector never sees the difference.}
+\end{frame}
+
+
+\begin{frame}{Step 3, Bayesian: only the embedding changes (Bayes, 4 iterations)}
+\fig{ladder_rung3b.pdf}
+\capt{The Bayesian points of step 2 use the 2021 (Cold QCD) embedding. Here the method is fixed and only the embedding changes: the 2023 (HP) sample gives 3--4\% more below 16~GeV and 1--2\% more above 25~GeV than the 2021 sample, the same energy-scale and efficiency difference as with the inversion. With the 2023 energy scale calibrated to 2021 the two samples agree within 2.5\% except in the first bin ($+5\%$). Method and embedding act separately: the method moves single bins by up to 5\% (step 2), the embedding by 1--4\% coherently (this slide).}
+\end{frame}
+
+\begin{frame}{Step 4: both changed (Bayes, 4 iterations, 2023 embedding)}
+\fig{ladder_rung4.pdf}
+\capt{Uncalibrated: within 7.5\% of Table III up to 44~GeV, 10\% in the last bin. With the 2023 energy scale calibrated to the 2021 sample: within 5\% everywhere except the 14.85~GeV published fluctuation ($-6\%$) and the last bin ($+7\%$).}
+\end{frame}
+
+\begin{frame}{The JP1 sample alone (2023 embedding)}
+\fig{ladder_rung5a.pdf}
+\capt{JP1 sample: JP0 or JP1 fired, JP1 should, jets matched to JP1 patches, no veto on JP2. A single sample inverted is unstable in its turn-on; Bayes with 4 iterations stays within 6.5\% from 8.2 to 44~GeV.}
+\end{frame}
+
+\begin{frame}{The JP2 sample alone (2023 embedding)}
+\fig{ladder_rung5b.pdf}
+\capt{JP2 sample: any JP fired, JP2 should, jets matched to JP2 patches. Bayes with 4 iterations stays within 4.5\% from 8.2 to 44~GeV; the inversion see-saws below 12~GeV.}
+\end{frame}
+
+\begin{frame}{The min-bias sample}
+\fig{ladder_rung6.pdf}
+\capt{VPDMB-nobsmd events normalised by $L_{\rm MB}\,\varepsilon_{\rm chain}$, with $\varepsilon_{\rm chain}=0.061$ the probability that a jet event passes the min-bias trigger chain; data and response through the same min-bias Stage-1 pass. With the 2021 sample the min-bias level sits 4--9\% above the jet-patch levels below 13.6~GeV and within 5\% above; the 2023 sample adds its own 3--5\%. The inversion scatter is the $\pm12\%$ noise of a single level spanning all bins.}
+\end{frame}
+
+\begin{frame}{Every trigger alone, Bayes per trigger (2023 embedding)}
+\fig{../../new_ana/results/figures/analysis_triggers_R0.5.pdf}
+\capt{Each trigger unfolded alone, Bayes with 4 iterations on the 2023 embedding, with its systematic band; JP1 quoted from 8.2~GeV, JP2 from 9.7, HT2 (trigger efficiency corrected) from 11.5, min-bias to 22.5~GeV.}
+\end{frame}
+
+\begin{frame}{Summary and proposal}
+\begin{itemize}
+\item Published construction, 2021 embedding, inversion: reproduced to 1\% (mean), 2.1\% (worst bin), $\chi^2/{\rm ndf}=9.2/12$.
+\item Bayes instead of inversion: single bins move by up to 5\% at 4 iterations, converging with more. Its error bars are 3--7 times smaller because the regularisation suppresses the variance the inversion propagates; the price is the prior dependence that the bars do not show.
+\item Our inversion bars are 1.6--3.9 times the published ones in 8.2--22.5~GeV because the publication's estimator ($b^2/N_{\rm entries}$) ignores the level weights; with that estimator we reproduce the published bars.
+\item 2023 (HP) instead of 2021 (Cold QCD) embedding, with either method: a 5\% to 2\% yield effect from a 0.2--0.9\% difference in $\langle p_T^{\rm det}/p_T^{\rm part}\rangle$. The detector simulation is identical; the generator records differ in the decay of $\pi^0$, $\eta$ and $\Sigma^0$, which with the 0.2~GeV constituent cut and the particle-level $\rho$ subtraction makes the 2021 truth jets 0.2--0.9\% softer. Calibrating the 2023 detector $p_T$ to 2021 restores the agreement.
+\item Target configuration (Bayes, 4 it., 2023): within 7.5\% of Table III up to 44~GeV uncalibrated, within 5\% calibrated; JP1 and JP2 alone within 6.5\% and 4.5\%; every single trigger within 5\% from 13.6 to 31~GeV.
+\item Proposal: decay $\pi^0$, $\eta$ and $\Sigma^0$ in the 2023 truth record at Stage-1 (the published particle-level definition; no new picos), which should remove the difference without a calibration; until then quote the 2023 Bayesian result with the energy scale calibrated to 2021 and carry the 0.2--0.9\% inside the jet-energy-scale systematic.
+\end{itemize}
+\end{frame}
+\end{document}
