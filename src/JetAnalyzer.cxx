@@ -1,10 +1,6 @@
 /** @file JetAnalyzer.cxx
     @author Kauder:Kolja
-    @version Revision 0.1
-    @brief Light FastJet wrapper for Heavy Ion analysis
-    program file and the functions in that file.
-    @details
-    @date Mar 04, 2015
+    @brief Light FastJet wrapper: implementation of JetAnalyzer.hh.
 */
 
 #include "JetAnalyzer.hh"
