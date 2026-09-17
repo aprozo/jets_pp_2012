@@ -32,6 +32,7 @@ star_star.simg
 *.zip
 submit/scheduler/
 bin/
+lib/
 
 run12data*.package
 run12*.zip
@@ -73,3 +74,16 @@ macros/ana/tasks.md
 *.lib
 
 allout.txt
+# LaTeX byproducts and merge scratch
+*.aux
+*.nav
+*.snm
+*.toc
+*.out
+scratch_merge_*/
+new_ana/results/
+
+# Stage-2 inputs are tracked even though *.root is ignored; deck outputs are not
+!new_ana/inputs/*.root
+new_ana/deck/results/
+new_ana/eps_chain/bits4/

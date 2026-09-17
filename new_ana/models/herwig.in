@@ -1,0 +1,55 @@
+# herwig.in — Herwig 7 in one hard-process kT bin, the Herwig member of the generator comparison.
+# Every physics setting of this sample is in this file, in Herwig's own input language: the default
+# tune, QCD 2->2 binned in the kT of the outgoing partons (the collider template's 20 GeV mass cut
+# lifted; the hard process is counted as the hardest scatter of the underlying-event model), pp at
+# 200 GeV, the 13 particles of the embedding request left stable, HepMC output for hepmc2tree.cc.
+# Edit a line and rerun `run_models.sh gen herwig`.
+#
+# Three placeholders stand for what changes from job to job: the bin edges @PTMIN@ and @PTMAX@ in GeV
+# and the HepMC file name @OUT@; run_models.sh substitutes them into the run directory of the bin.
+read snippets/PPCollider.in
+cd /Herwig/Generators
+set EventGenerator:EventHandler:LuminosityFunction:Energy 200.0
+
+# --- hard process: QCD 2 -> 2 in one kT bin ----------------------------------------------------------
+cd /Herwig/MatrixElements/
+insert SubProcess:MatrixElements[0] MEQCD2to2
+set /Herwig/Cuts/Cuts:MHatMin 0.0*GeV
+set /Herwig/Cuts/JetKtCut:MinKT @PTMIN@*GeV
+set /Herwig/Cuts/JetKtCut:MaxKT @PTMAX@*GeV
+
+# --- the 13 species the embedding request leaves for GEANT to decay ----------------------------------
+set /Herwig/Particles/pi+:Stable Stable
+set /Herwig/Particles/pi-:Stable Stable
+set /Herwig/Particles/K+:Stable Stable
+set /Herwig/Particles/K-:Stable Stable
+set /Herwig/Particles/K_S0:Stable Stable
+set /Herwig/Particles/K_L0:Stable Stable
+set /Herwig/Particles/Lambda0:Stable Stable
+set /Herwig/Particles/Lambdabar0:Stable Stable
+set /Herwig/Particles/Sigma-:Stable Stable
+set /Herwig/Particles/Sigmabar+:Stable Stable
+set /Herwig/Particles/Sigma+:Stable Stable
+set /Herwig/Particles/Sigmabar-:Stable Stable
+set /Herwig/Particles/Sigma0:Stable Stable
+set /Herwig/Particles/Sigmabar0:Stable Stable
+set /Herwig/Particles/Xi-:Stable Stable
+set /Herwig/Particles/Xibar+:Stable Stable
+set /Herwig/Particles/Xi0:Stable Stable
+set /Herwig/Particles/Xibar0:Stable Stable
+set /Herwig/Particles/Omega-:Stable Stable
+set /Herwig/Particles/Omegabar+:Stable Stable
+set /Herwig/Particles/pi0:Stable Stable
+set /Herwig/Particles/eta:Stable Stable
+
+# --- HepMC output, and a quiet log -------------------------------------------------------------------
+cd /Herwig/Generators
+create ThePEG::HepMCFile /Herwig/Analysis/HepMC HepMCAnalysis.so
+insert EventGenerator:AnalysisHandlers 0 /Herwig/Analysis/HepMC
+set /Herwig/Analysis/HepMC:PrintEvent 100000000
+set /Herwig/Analysis/HepMC:Format GenEvent
+set /Herwig/Analysis/HepMC:Units GeV_mm
+set /Herwig/Analysis/HepMC:Filename @OUT@
+set EventGenerator:PrintEvent 0
+set EventGenerator:MaxErrors 100000
+saverun herwig EventGenerator
