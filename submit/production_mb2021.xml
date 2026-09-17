@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8" ?>
+
+<!-- Stage-1 template for the 2021 embedding request: a copy of production.xml
+     with a distinct job name and matchedMB_ routed to output/matchingMB2021/,
+     so the main production's trees are never overwritten. type is a
+     container.sh mode; radii is underscore-separated (0.5 or 0.2_0.3_0.4).
+     Submitted from the HOST by run_production.sh, which fills the entities:
+     star-submit-template -entities type=<...>,filelist=<...>,radii=<...>. -->
+<job name="jets_&type;2021_" maxFilesPerProcess="1" fileListSyntax="paths" simulateSubmission="false">
+
+        <input URL="filelist:/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/&filelist;" nFiles="all" />
+
+        <command>
+        @ nFile=0
+        while ( $nFile &lt; $INPUTFILECOUNT )
+        eval set filename = '$INPUTFILE'$nFile
+        echo $filename
+        singularity exec -e -B $SCRATCH -B /gpfs01 -B /gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/lib/eventStructuredAu_final:/usr/local/eventStructuredAu /gpfs01/star/pwg/prozorov/jets_pp_2012/star_star.simg bash container.sh $filename &type; . &radii;
+        @ nFile++
+        end
+        </command>
+
+        <stdout URL="file:/dev/null" />
+        <stderr URL="file:/dev/null" />
+
+        <ResourceUsage>
+        <Memory>
+                <MinMemory>2500</MinMemory>
+        </Memory>
+        </ResourceUsage>
+
+        <Generator>
+                <Location>/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/submit/scheduler/gen/</Location>
+        </Generator>
+
+        <!-- Only the final products are copied back; intermediate mc_/geant_ are
+             discarded in scratch. First-match wins. -->
+        <output fromScratch="matchedMB_*.root" toURL="/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/output/matchingMB2021/" />
+        <output fromScratch="matched_*.root" toURL="/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/output/matching/" />
+        <output fromScratch="mbdata_*.root" toURL="/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/output/dataMB/" />
+        <output fromScratch="data_*.root" toURL="/gpfs01/star/pwg/prozorov/study_pp2012/fable5/jets_pp_2012/output/data/" />
+
+        <SandBox installer="ZIP">
+                <Package name="run12prod">
+                        <File>file:./lists</File>
+                        <File>file:./container.sh</File>
+                        <File>file:./setup.sh</File>
+                        <File>file:./Makefile</File>
+                        <File>file:./src/</File>
+                        <File>file:./macros/</File>
+                        <File>file:./bin/RunppAna</File>
+                </Package>
+        </SandBox>
+
+</job>

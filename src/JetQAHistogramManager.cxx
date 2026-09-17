@@ -25,13 +25,14 @@ void JetQAHistogramManager::Init()
    vy = new TH1D("vy", "Primary vertex y; vy, cm; N", 300, -0.5, 0.5);
    vz = new TH1D("vz", "Primary vertex z; vz, cm; N", 280, -70, 70);
    vz_vpd = new TH1D("vz_vpd", "Primary vertex z from VPD; vz, cm; N", 400, -100, 100);
-   vz_diff = new TH1D("vz_diff", "vertex z VPD-TPC; vz, cm; N", 500, -30, 2300);
+   vz_diff = new TH1D("vz_diff", "vertex z VPD-TPC; vz, cm; N", 500, -30, 30);
    refmult = new TH1D("refmult", "Reference multiplicity; refmult; N", 150, 0, 150);
    mult = new TH1D("mult", "Selected multiplicity; mult; N", 150, 0, 150);
    njets = new TH1D("njets", "Jets per event; N_{jets}; N", 10, 0, 10);
    event_sum_pt = new TH1D("event_sum_pt", "Event sum p_{T}; sum p_{T} [GeV/c]; N", 100, 0, 100);
 
-   // Run-binned constituent profiles (run-number axis, hadd-able, full run coverage)
+   // Run-binned constituent profiles: run number on the x axis, so they cover
+   // every run and survive hadd.
    run_tower_et      = new TProfile("run_tower_et", "<tower E_{T}> vs run; run; <E_{T}> [GeV]", 35000, 13040000, 13075000);
    run_track_pt      = new TProfile("run_track_pt", "<track p_{T}> vs run; run; <p_{T}> [GeV]", 35000, 13040000, 13075000);
    run_track_dca     = new TProfile("run_track_dca", "<track DCA> vs run; run; <DCA> [cm]", 35000, 13040000, 13075000);
@@ -40,7 +41,6 @@ void JetQAHistogramManager::Init()
 
    // Tracks
    track_pt = new TH1D("track_pt", "Track p_{T}; p_{T} [GeV/c]; N", 300, 0, 30);
-   // set logy
    track_eta = new TH1D("track_eta", "Track #eta; #eta; N", 120, -1.2, 1.2);
    track_phi = new TH1D("track_phi", "Track #phi; #phi; N", 128, -TMath::Pi(), TMath::Pi());
    track_dca = new TH1D("track_dca", "Track DCA; DCA [cm]; N", 200, 0, 5);
@@ -149,16 +149,14 @@ void JetQAHistogramManager::FillJet(const fastjet::PseudoJet &jet, bool match_jp
          pt_sDCAxy_neg->Fill(track->GetsDCAxy(), pt);
    }
 
-   // get ptLead and see if it is from charged or neutral
-   double pt_lead = jet.constituents()[0].perp();
-   // check if first constituent is charged or neutral
-   // get charge from user info
-   // JetAnalysisUserInfo's accessor is named GetQuarkCharge() (charge in
-   // units of e/3); rename ripple-through from JetAnalyzer.hh sync.
-   if (jet.constituents()[0].is_pure_ghost() ||
-       !jet.constituents()[0].has_user_info<JetAnalysisUserInfo>())
+   // Leading constituent: is it charged or neutral? (GetQuarkCharge() is the
+   // constituent charge in units of e/3.)
+   const std::vector<fastjet::PseudoJet> sorted_constituents = fastjet::sorted_by_pt(jet.constituents());
+   double pt_lead = sorted_constituents[0].perp();
+   if (sorted_constituents[0].is_pure_ghost() ||
+       !sorted_constituents[0].has_user_info<JetAnalysisUserInfo>())
       return;
-   int charge = jet.constituents()[0].user_info<JetAnalysisUserInfo>().GetQuarkCharge();
+   int charge = sorted_constituents[0].user_info<JetAnalysisUserInfo>().GetQuarkCharge();
    if (charge != 0) {
       jet_ptlead_track->Fill(pt_lead);
       jet_ptlead_track_vs_nconstituents->Fill(pt_lead, n_const);

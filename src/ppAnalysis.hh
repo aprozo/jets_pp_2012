@@ -1,9 +1,7 @@
 /* @file ppAnalysis.hh
     @author Raghav Kunnawalkam Elayavalli
-    @version Revision 1.0
-    @brief analysis class
-    @details Uses JetAnalyzer objects
-    @date March 16, 2022
+    @brief Stage-1 analysis class: reads TStarJetPico events, finds jets with
+           JetAnalyzer and exposes per-event / per-jet results to RunppAna.
 */
 
 #ifndef __PPANALYSIS_HH
@@ -29,7 +27,6 @@
 #include "fastjet/contrib/Recluster.hh"
 #include "fastjet/contrib/SoftDrop.hh"
 
-// Not needed for analysis per se
 #include "TStarJetPicoEvent.h"
 #include "TStarJetPicoEventCuts.h"
 #include "TStarJetPicoEventHeader.h"
@@ -40,7 +37,6 @@
 #include "TStarJetPicoTrackCuts.h"
 #include "TStarJetPicoTriggerInfo.h"
 
-#include "TStarJetPicoTriggerInfo.h"
 #include "TStarJetPicoUtils.h"
 #include "TStarJetVector.h"
 #include "TStarJetVectorContainer.h"
@@ -62,17 +58,13 @@ using namespace contrib;
 #include <algorithm>
 #include <random>
 
-/*
-   For sorting with a different key
-*/
+/* For sorting with a different key */
 typedef pair<PseudoJet, double> PseudoJetPt;
 struct PseudoJetPtGreater {
    bool operator()(PseudoJetPt const &a, PseudoJetPt const &b) { return a.second > b.second; }
 };
 
-/*
-  To keep original and groomed jets connected
- */
+/* One jet plus the area / UE quantities computed for it */
 class ResultStruct {
 public:
    PseudoJet orig;
@@ -83,39 +75,25 @@ public:
    static bool origptgreater(ResultStruct const &a, ResultStruct const &b) { return a.orig.pt() > b.orig.pt(); };
 };
 
-/*
-    convenient output
-*/
 ostream &operator<<(ostream &ostr, const PseudoJet &jet);
 
-/*
-    Helper for chains
- */
 void InitializeReader(std::shared_ptr<TStarJetPicoReader> pReader, const TString InputName, const Long64_t NEvents,
                       const int PicoDebugLevel, const double HadronicCorr = 0.999999);
 
-static const Selector NotGhost = !fastjet::SelectorIsPureGhost(); ///< Helper useful outside the class as
-                                                                  ///< well
-static const Selector OnlyCharged =
-   NotGhost && (SelectorChargeRange(-3, -1) || SelectorChargeRange(1, 3)); ///< Helper useful outside the class as well
-static const Selector OnlyNeutral = NotGhost && SelectorChargeRange(0, 0); ///< Helper useful outside the class as well
+// Constituent selectors, also useful outside the class
+static const Selector NotGhost = !fastjet::SelectorIsPureGhost();
+static const Selector OnlyCharged = NotGhost && (SelectorChargeRange(-3, -1) || SelectorChargeRange(1, 3));
+static const Selector OnlyNeutral = NotGhost && SelectorChargeRange(0, 0);
 
 #include "JetQAHistogramManager.hh"
 
-/*
-   The main class
- */
 class ppAnalysis {
 
 private:
-   // These need to be initialized
-   // ----------------------------
    ppParameters pars; ///< container to have all analysis parameters in one place
 
    JetQAHistogramManager QA_hist; ///< QA histograms
 
-   // Internal
-   // --------
    float EtaJetCut;   ///< jet eta
    float EtaGhostCut; ///< ghost eta
 
@@ -123,13 +101,10 @@ private:
 
    fastjet::JetDefinition JetDef; ///< jet definition
 
-   // Relevant jet candidates
    fastjet::Selector select_jet_eta; ///< jet rapidity selector
    fastjet::Selector select_jet_pt;  ///< jet p<SUB>T</SUB> selector
    fastjet::Selector select_jet;     ///< compound jet selector
 
-   // Data
-   // ----
    Long64_t NEvents = -1;
    TChain *Events = 0;
    TClonesArray *pFullEvent = 0; ///< Constituents
@@ -151,14 +126,31 @@ private:
    double weight;
    int njets;
    bool isTriggerEvent;
-   // Per-event JP-trigger fire flags = header trigger IDs 370601/611/621. For
-   // DATA these are the REAL prescale-accepted hardware bits (the maker copies
-   // triggerIdCollection().nominal() verbatim) — the basis of the
-   // independent-trigger (fired-sample / sampled-lumi) analysis downstream.
+   // Per-event JP fire flags = header trigger ids 370601/611/621. In DATA these
+   // are the real prescale-accepted hardware bits (the maker copies the nominal
+   // trigger-id list verbatim).
    bool firedJP0;
+   bool shouldJP0 = false, shouldJP1 = false, shouldJP2 = false;
+   bool shouldHwJP0 = false, shouldHwJP1 = false, shouldHwJP2 = false;
+   bool shouldHT2 = false;          // full-simulator HT2 decision (bit-8 picos)
+   bool haveSimuDecision = false;   // pico carries bit-8 isTrigger() objects
    bool firedJP1;
    bool firedJP2;
-   double vz;  ///< primary-vertex z of the current event (needed for vertex-z reweighting downstream)
+   bool firedHT2 = false; // 370531 in the nominal trigger-id list
+   bool firedMB = false;  // 370011 or 370001 in the nominal trigger-id list
+   double vz;  ///< primary-vertex z (cm); needed for vertex-z reweighting downstream
+   double pthat = -1;  ///< event pt-hat, MC picos only (MC header reference-centrality weight); -1 otherwise
+   double vx = 0.0;     ///< primary-vertex x
+   double vy = 0.0;     ///< primary-vertex y
+   double vz_vpd = 0.0; ///< VPD-measured vertex z
+   int n_vpd_east = 0;  ///< VPD east hit count (VPDMB-fired proxy: east>=1 && west>=1)
+   int n_vpd_west = 0;  ///< VPD west hit count
+   // Trigger-simulator ADCs on the DSM scale, for threshold variations downstream:
+   // max jet-patch ADC and max high-tower ADC of the event, and the thresholds.
+   int jp_adc_max = -1;
+   int ht_adc_max = -1;
+   int jp_thr[3] = {0, 0, 0};
+   int ht_thr[4] = {0, 0, 0, 0};
 
    JetAnalyzer *pJA = 0;
 
@@ -167,12 +159,8 @@ private:
 public:
    ppAnalysis(const int argc, const char **const);
 
-   /* Destructor. Clean things up
-    */
    virtual ~ppAnalysis();
 
-   /* Decoupled chain initialization for readability
-    */
    bool InitChains();
 
    /* Main routine for one event.
@@ -180,10 +168,7 @@ public:
     */
    EVENTRESULT RunEvent();
 
-   // Getters and Setters
-   // -------------------
    inline ppParameters &GetPars() { return pars; };
-   // get HistogramManager
    inline JetQAHistogramManager &GetHistogramManager() { return QA_hist; };
 
    /// Get jet radius
@@ -201,8 +186,8 @@ public:
    /// Get the refmult of the current event
    inline double GetRefmult() { return refmult; };
 
-   /// Get the runid of the current event (this id for geant events can match
-   /// to bad run ids)
+   /// Get the runid of the current event (for geant events this id can collide
+   /// with bad run ids)
    inline double GetRunid1() { return runid1; };
 
    /// Get the runid of the current event
@@ -215,6 +200,17 @@ public:
    inline bool FiredJP0() { return firedJP0; };
    inline bool FiredJP1() { return firedJP1; };
    inline bool FiredJP2() { return firedJP2; };
+   inline bool FiredHT2() { return firedHT2; };
+   inline bool FiredMB() { return firedMB; };
+   // offline-emulator ("shouldFire") per-event decisions, non-bit-7 objects
+   inline bool ShouldJP0() { return shouldJP0; };
+   inline bool ShouldJP1() { return shouldJP1; };
+   inline bool ShouldJP2() { return shouldJP2; };
+   inline bool ShouldHT2() { return shouldHT2; };
+   // hardware (kOnline-sim, bit-7) per-event decisions
+   inline bool ShouldHwJP0() { return shouldHwJP0; };
+   inline bool ShouldHwJP1() { return shouldHwJP1; };
+   inline bool ShouldHwJP2() { return shouldHwJP2; };
 
    inline float GetEventSumPt() { return event_sum_pt; };
 
@@ -222,6 +218,16 @@ public:
 
    /// Primary-vertex z of the current event (cm)
    inline double GetVz() { return vz; };
+   inline double GetPthat() { return pthat; };
+   inline double GetVx() { return vx; };
+   inline double GetVy() { return vy; };
+   inline double GetVpdVz() { return vz_vpd; };
+   inline int GetNVpdEast() { return n_vpd_east; };
+   inline int GetNVpdWest() { return n_vpd_west; };
+   inline int GetJpAdcMax() { return jp_adc_max; };
+   inline int GetHtAdcMax() { return ht_adc_max; };
+   inline int GetJpThr(int i) { return jp_thr[i]; };
+   inline int GetHtThr(int i) { return ht_thr[i]; };
 
    /// Get the Trigger (HT) object if it exists, for matching
    inline TStarJetVector *GetTrigger() const { return pHT; };
@@ -237,6 +243,6 @@ shared_ptr<TStarJetPicoReader> SetupReader(TChain *chain, const ppParameters &pa
 void TurnOffCuts(std::shared_ptr<TStarJetPicoReader> pReader);
 
 bool isInsideJetPatch(const int &jetPatch, const float &jetEta, const float &jetPhi);
-bool isInsideJetPatchDmitry(const int &jetPatch, const float &jetEta, const float &jetPhi);
+bool isInsideJetPatchBox(const int &jetPatch, const float &jetEta, const float &jetPhi);
 
 #endif // __PPANALYSIS_HH

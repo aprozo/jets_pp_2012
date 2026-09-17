@@ -2,33 +2,20 @@
 #include "ppAnalysis.hh"
 #include "ppParameters.hh"
 
-#include "TObjString.h"
 #include "TString.h"
-#include <TBranch.h>
 #include <TChain.h>
 #include <TClonesArray.h>
 #include <TFile.h>
 #include <TLorentzVector.h>
-#include <TMath.h>
 
-#include <algorithm>
-#include <set>
-#include <vector>
-
-#include <climits>
 #include <cmath>
-
-#include "fastjet/contrib/Recluster.hh"
-#include "fastjet/contrib/SoftDrop.hh"
-
 #include <exception>
+#include <stdexcept>
+#include <vector>
 
 using namespace std;
 using namespace fastjet;
 using namespace contrib;
-
-// Mostly for run 12
-bool readinbadrunlist(vector<int> &badrun, TString csvfile);
 
 int main(int argc, const char **argv)
 {
@@ -54,29 +41,19 @@ int main(int argc, const char **argv)
       cout << "argv[" << i << "]=" << argv[i] << endl;
    }
 
-   // Explicitly choose bad tower list here
-   // -------------------------------------
-   // Otherwise too easy to hide somewhere and forget...
+   // The bad-tower list is chosen explicitly here, not hidden in a parameter.
    shared_ptr<TStarJetPicoReader> pReader = ppana->GetpReader();
 
    if (pReader) {
       TStarJetPicoTowerCuts *towerCuts = pReader->GetTowerCuts();
-      // Full ~200-tower isaac hot/dead mask — approximates Dmitry's
-      // StjTowerEnergyCutBemcStatus(1) DB mask, which he applies IN ADDITION
-      // to the explicit 3407 (StjTowerEnergyCutTowerId). The 2026-06-12
-      // 3407-only production PROVED the mask is load-bearing: without it,
-      // hot-tower fakes (absent in embedding) produce rising tails — JP2
-      // 1.41 at 40.6 / 1.95 at 48 GeV, HT2 (tower-triggered) 1.56 / 2.33.
-      // ("lists/badtower_3407.list" kept for the minimal-mask systematic.)
-      towerCuts->AddBadTowers("lists/Combined_pp200Y12_badtower_isaac.list");
+      // Tower mask: the DB tower status is applied at Stage-0 (pico production);
+      // the only explicit veto here is tower 3407 (hot in Run 12).
+      towerCuts->AddBadTowers("lists/badtower_3407.list");
+      std::cout << "Bad tower list: lists/badtower_3407.list" << std::endl;
 
       // Bad-run masking disabled: accept all runs in the pico list.
-      // Dmitry-aligned filtering is applied downstream in
-      // cross_section.cpp via dmitry_extras.list.
    }
 
-   // File
-   // --------------------
    TFile *fout = new TFile(pars.OutFileName, "RECREATE");
 
    TH1D *hEventCounter = new TH1D("hEventCounter", "Event Counter", 5, 0, 5);
@@ -86,13 +63,11 @@ int main(int argc, const char **argv)
    hEventCounter->GetXaxis()->SetBinLabel(4, "NOJETS");
    hEventCounter->GetXaxis()->SetBinLabel(5, "NOCONSTS");
 
-   // Good-run list disabled: hEventsRun auto-grows as new run labels
-   // appear via Fill(label, w). Bins/labels populated at runtime.
+   // No good-run list: hEventsRun auto-grows as new run labels appear via
+   // Fill(label, w), so bins and labels are populated at runtime.
    TH1D *hEventsRun = new TH1D("hEventsRun", "Events per run", 1, 0, 1);
    hEventsRun->SetCanExtend(TH1::kAllAxes);
 
-   // Save results
-   // ------------
    TTree *ResultTree = new TTree("ResultTree", "Result Jets");
 
    // Give each event a unique ID to compare event by event with different runs
@@ -105,12 +80,21 @@ int main(int argc, const char **argv)
    bool isTriggerEvent;
    ResultTree->Branch("isTriggerEvent", &isTriggerEvent, "isTriggerEvent/O");
    // Per-event JP fire flags (real prescale-accepted hardware bits in data).
-   // Basis of the independent-trigger analysis: filter fired_<T>, normalize by
-   // the trigger's SAMPLED lumi (JP1 7.122, JP0 0.1486 pb^-1).
-   bool fired_JP0, fired_JP1, fired_JP2;
+   bool fired_JP0, fired_JP1, fired_JP2, fired_HT2, fired_MB, should_HT2;
    ResultTree->Branch("fired_JP0", &fired_JP0, "fired_JP0/O");
    ResultTree->Branch("fired_JP1", &fired_JP1, "fired_JP1/O");
    ResultTree->Branch("fired_JP2", &fired_JP2, "fired_JP2/O");
+   ResultTree->Branch("fired_HT2", &fired_HT2, "fired_HT2/O");
+   ResultTree->Branch("fired_MB", &fired_MB, "fired_MB/O");
+   ResultTree->Branch("should_HT2", &should_HT2, "should_HT2/O");
+   bool should_JP0, should_JP1, should_JP2; // offline-emulator decisions
+   ResultTree->Branch("should_JP0", &should_JP0, "should_JP0/O");
+   ResultTree->Branch("should_JP1", &should_JP1, "should_JP1/O");
+   ResultTree->Branch("should_JP2", &should_JP2, "should_JP2/O");
+   bool shouldHW_JP0, shouldHW_JP1, shouldHW_JP2; // kOnline (bit-7) decisions
+   ResultTree->Branch("shouldHW_JP0", &shouldHW_JP0, "shouldHW_JP0/O");
+   ResultTree->Branch("shouldHW_JP1", &shouldHW_JP1, "shouldHW_JP1/O");
+   ResultTree->Branch("shouldHW_JP2", &shouldHW_JP2, "shouldHW_JP2/O");
    double weight;
    ResultTree->Branch("weight", &weight, "weight/D");
    double refmult;
@@ -119,74 +103,77 @@ int main(int argc, const char **argv)
    ResultTree->Branch("njets", &njets, "njets/I");
    int mult;
    ResultTree->Branch("mult", &mult, "mult/I");
-   // Primary vertex z (cm).  Needed downstream for vertex-z reweighting,
-   // i.e. the user-side analogue of Dmitry's
-   // SetVertexReweightingParams("embedding_tpc_vertex", ...).
+   // Primary vertex z (cm); needed downstream for vertex-z reweighting.
    double vz;
    ResultTree->Branch("vz", &vz, "vz/D");
+   double pthat = -1;
+   ResultTree->Branch("pthat", &pthat, "pthat/D"); // event pt-hat from the MC pico header (-1 data)
+   // VPD vertex z (the |vz_vpd - vz| < 6 cut is MB-only) and transverse vertex.
+   double vx, vy, vz_vpd;
+   ResultTree->Branch("vx", &vx, "vx/D");
+   ResultTree->Branch("vy", &vy, "vy/D");
+   ResultTree->Branch("vz_vpd", &vz_vpd, "vz_vpd/D");
+   // VPD east/west hit counts: VPDMB-fired proxy is n_east>=1 && n_west>=1.
+   int n_vpd_east, n_vpd_west;
+   ResultTree->Branch("n_vpd_east", &n_vpd_east, "n_vpd_east/I");
+   ResultTree->Branch("n_vpd_west", &n_vpd_west, "n_vpd_west/I");
    float event_sum_pt;
    ResultTree->Branch("event_sum_pt", &event_sum_pt, "event_sum_pt/F");
+   // Simulator ADCs (DSM scale) and thresholds: event maxima here, per-jet below.
+   int evt_jp_adc_max, evt_ht_adc_max, jp_thr[3], ht_thr[4];
+   ResultTree->Branch("evt_jp_adc_max", &evt_jp_adc_max, "evt_jp_adc_max/I");
+   ResultTree->Branch("evt_ht_adc_max", &evt_ht_adc_max, "evt_ht_adc_max/I");
+   ResultTree->Branch("jp_thr", jp_thr, "jp_thr[3]/I");
+   ResultTree->Branch("ht_thr", ht_thr, "ht_thr[4]/I");
 
    TClonesArray Jets("TStarJetVectorJet");
    ResultTree->Branch("Jets", &Jets);
-   double neutral_fraction[1000];
+   // Fixed capacity of the per-jet stack arrays below; njets is guarded
+   // against it after GetResult() (never reached at PtJetMin=5).
+   constexpr int kMaxJetsPerEvent = 1000;
+   double neutral_fraction[kMaxJetsPerEvent];
    ResultTree->Branch("neutral_fraction", neutral_fraction, "neutral_fraction[njets]/D");
-   int lead_tower_id[1000];
+   int lead_tower_id[kMaxJetsPerEvent];
    ResultTree->Branch("lead_tower_id", lead_tower_id, "lead_tower_id[njets]/I");
-   // Near-max JP-patch ADC in the jet's box (-1 if none). QA/provenance probe:
-   // degenerate-data signature = trigger_match_JP2 && jp_patch_adc<=36 events.
-   int jp_patch_adc[1000];
+   // Near-max JP-patch ADC in the jet's box (-1 if none), a QA probe.
+   int jp_patch_adc[kMaxJetsPerEvent];
    ResultTree->Branch("jp_patch_adc", jp_patch_adc, "jp_patch_adc[njets]/I");
+   int ht_adc_max[kMaxJetsPerEvent];
+   ResultTree->Branch("ht_adc_max", ht_adc_max, "ht_adc_max[njets]/I");
 
-   // IsMatchedJP() returns the JP-match for whichever JP-trigger family was
-   // selected via the -trig flag (JP0/JP1/JP2 — see match_jp dispatch on
-   // pars.TriggerName.Contains in ppAnalysis.cxx). Expose the same data
-   // under the three explicit branch names so downstream (matching.cpp,
-   // unfolding/, cross_section.cpp) can filter via
-   //   reco_trigger_match_<TRIG>
-   // regardless of which JP-family was active. All three branches carry
-   // identical content per run; the trigger map (-trig JP1 vs JP2) sets
-   // WHICH JP family is the active match.
-   bool trigger_match_JP2[1000];
+   bool trigger_match_JP2[kMaxJetsPerEvent];
    ResultTree->Branch("trigger_match_JP2", trigger_match_JP2, "trigger_match_JP2[njets]/O");
-   bool trigger_match_JP1[1000];
+   bool trigger_match_JP1[kMaxJetsPerEvent];
    ResultTree->Branch("trigger_match_JP1", trigger_match_JP1, "trigger_match_JP1[njets]/O");
-   bool trigger_match_JP0[1000];
+   bool trigger_match_JP0[kMaxJetsPerEvent];
    ResultTree->Branch("trigger_match_JP0", trigger_match_JP0, "trigger_match_JP0[njets]/O");
-   bool trigger_match_HT2[1000];
+   bool trigger_match_HT2[kMaxJetsPerEvent];
    ResultTree->Branch("trigger_match_HT2", trigger_match_HT2, "trigger_match_HT2[njets]/O");
-   double pt[1000];
+   double pt[kMaxJetsPerEvent];
    ResultTree->Branch("pt", pt, "pt[njets]/D");
 
-   double ptLead[1000];
+   double ptLead[kMaxJetsPerEvent];
    ResultTree->Branch("ptLead", ptLead, "ptLead[njets]/D");
 
-   int n_constituents[1000];
+   int n_constituents[kMaxJetsPerEvent];
    ResultTree->Branch("n_constituents", n_constituents, "n_constituents[njets]/I");
-   int index[1000];
+   int index[kMaxJetsPerEvent];
    ResultTree->Branch("index", index, "index[njets]/I");
 
-   // Jet area + UE density via off-axis cones (R= -R) + UE-subtracted pT.
-   //   pt_corrected = pt - bg_density * jet_area
-   double jet_area[1000];
+   // Jet area, off-axis-cones UE density, and pt_corrected = pt - bg_density * jet_area
+   double jet_area[kMaxJetsPerEvent];
    ResultTree->Branch("jet_area", jet_area, "jet_area[njets]/D");
-   double bg_density[1000];
+   double bg_density[kMaxJetsPerEvent];
    ResultTree->Branch("bg_density", bg_density, "bg_density[njets]/D");
-   double pt_corrected[1000];
+   double pt_corrected[kMaxJetsPerEvent];
    ResultTree->Branch("pt_corrected", pt_corrected, "pt_corrected[njets]/D");
 
-   // Detector-frame jet eta (Pibero / Dmitry's StJetCandidate::detEta).
-   // detEta is the jet eta projected from origin (0,0,0) to BEMC radius 225.405 cm.
-   // Required for the detector-level |detEta| < 0.5 cut that mirrors
-   // Dmitry's make_detector_level_cut. Formula: asinh(sinh(eta_phys) + vz/225.405).
-   double det_eta[1000];
+   // Detector-frame jet eta: the jet eta projected from the origin onto the BEMC
+   // front face, asinh(sinh(eta_phys) + vz/225.405) with R_BEMC = 225.405 cm.
+   // The detector-level |det_eta| < 0.5 acceptance cut is applied downstream.
+   double det_eta[kMaxJetsPerEvent];
    ResultTree->Branch("det_eta", det_eta, "det_eta[njets]/D");
 
-   // Helpers
-   TStarJetVector *sv;
-
-   // Go through events
-   // -----------------
    cout << "Running analysis" << endl;
    try {
       bool ContinueReading = true;
@@ -196,7 +183,6 @@ int main(int argc, const char **argv)
          Jets.Clear();
          EVENTRESULT ret = ppana->RunEvent(); // event observables reset here
 
-         // Understand what happened in the event
          switch (ret) {
          case EVENTRESULT::PROBLEM:
             cerr << "Encountered a serious issue" << endl;
@@ -208,17 +194,12 @@ int main(int argc, const char **argv)
             continue;
             break;
          case EVENTRESULT::NOTACCEPTED:
-            // continue;
             break;
          case EVENTRESULT::NOCONSTS:
-            // cout << "Event empty." << endl;
             break;
          case EVENTRESULT::NOJETS:
-            // cout << "No jets found." << endl;
             break;
          case EVENTRESULT::JETSFOUND:
-            // The only way not to break out or go back to the top
-            // cout << "Jets found." << endl;
             break;
          default:
             cerr << "Unknown return value." << endl;
@@ -238,29 +219,28 @@ int main(int argc, const char **argv)
             hEventCounter->Fill("NOJETS", 1);
          }
 
-         // Now we can pull out details and results
-         // ---------------------------------------
          isTriggerEvent = ppana->IsTriggerEvent();
          fired_JP0 = ppana->FiredJP0();
          fired_JP1 = ppana->FiredJP1();
          fired_JP2 = ppana->FiredJP2();
+         fired_HT2 = ppana->FiredHT2();
+         fired_MB = ppana->FiredMB();
+         should_HT2 = ppana->ShouldHT2();
+         should_JP0 = ppana->ShouldJP0();
+         should_JP1 = ppana->ShouldJP1();
+         should_JP2 = ppana->ShouldJP2();
+         shouldHW_JP0 = ppana->ShouldHwJP0();
+         shouldHW_JP1 = ppana->ShouldHwJP1();
+         shouldHW_JP2 = ppana->ShouldHwJP2();
          runid = ppana->GetRunid();
-         // Luminosity bookkeeping: count events that were *actually analyzed for
-         // the spectrum* — i.e. that pass the analysis trigger filter
-         // (didFire AND shouldFire — see the `simu_fired` block in
-         // ppAnalysis.cxx) and weren't otherwise rejected (Vz, ranking, ...).
-         // The cross section is computed downstream as
+         // Luminosity bookkeeping: hEventsRun counts events actually analyzed for
+         // the spectrum — those passing the trigger filter (didFire AND shouldFire,
+         // see the `simu_fired` block in ppAnalysis.cxx) and not otherwise rejected
+         // (Vz, ranking, ...). The cross section is computed downstream as
          //     runLumi = (hEventsRun / lumi.root::nevents_<TRIG>) × lumi_<TRIG>
-         // so hEventsRun must count events using the same definition that
-         // nevents_<TRIG> does for STAR-recorded JP2 events. Hot-tower-only
-         // triggers fire the hardware (didFire=true) but the simulator with
-         // bad-tower mask disagrees (shouldFire=false); they're *recorded* in
-         // nevents_<TRIG> but not analyzed for the spectrum, so they belong
-         // in neither the numerator nor here.
-         //
-         // For MC (`intype == MCPICO`) there is no hardware trigger to filter
-         // on, so we fall back to the original behaviour and fill hEventsRun
-         // for every event reaching this point.
+         // so hEventsRun must use the same event definition as nevents_<TRIG>.
+         // In MC there is no hardware trigger to filter on, so every event
+         // reaching this point is counted.
          const bool keep_for_lumi = (pars.intype == MCPICO)
                                   || (isTriggerEvent && ret != EVENTRESULT::NOTACCEPTED);
          if (keep_for_lumi) {
@@ -272,15 +252,22 @@ int main(int argc, const char **argv)
          eventid = ppana->GetEventid();
          mult = ppana->GetEventMult();
          vz = ppana->GetVz();
+         pthat = ppana->GetPthat();
+         vx = ppana->GetVx();
+         vy = ppana->GetVy();
+         vz_vpd = ppana->GetVpdVz();
+         n_vpd_east = ppana->GetNVpdEast();
+         n_vpd_west = ppana->GetNVpdWest();
          event_sum_pt = ppana->GetEventSumPt();
+         evt_jp_adc_max = ppana->GetJpAdcMax();
+         evt_ht_adc_max = ppana->GetHtAdcMax();
+         for (int i = 0; i < 3; ++i) jp_thr[i] = ppana->GetJpThr(i);
+         for (int i = 0; i < 4; ++i) ht_thr[i] = ppana->GetHtThr(i);
 
-         // if (pars.InputName.Contains("hat") && pars.intype == INPICO &&
-         //     ret == EVENTRESULT::NOTACCEPTED) { // fill events only for Geant only to account for missed jets
-         //    ResultTree->Fill();
-         //    continue;
-         // }
          vector<ResultStruct> Result = ppana->GetResult();
          njets = Result.size();
+         if (njets > kMaxJetsPerEvent)
+            throw std::runtime_error("njets exceeds the kMaxJetsPerEvent per-jet array capacity");
          if (njets == 0)
             continue;
 
@@ -290,17 +277,15 @@ int main(int argc, const char **argv)
             new (Jets[ijet]) TStarJetVectorJet(sv);
             neutral_fraction[ijet] = gr.orig.user_info<JetAnalysisUserInfo>().GetNumber();
             lead_tower_id[ijet]    = gr.orig.user_info<JetAnalysisUserInfo>().GetLeadTowerId();
-            // Per-threshold JP-patch matches (isJP0/isJP1/isJP2 separately) — NOT
-            // degenerate. Required for genuine per-trigger gates downstream.
-            // (The old code copied one matched_jp flag into all three branches —
-            // that degeneracy inflated the JP2 trigger efficiency ~2.8x and bent
-            // the spectrum; see CLAUDE.md provenance gotchas.)
+            // Per-threshold JP-patch matches (JP0/JP1/JP2 independently), for
+            // per-trigger gates downstream.
             const auto &ui = gr.orig.user_info<JetAnalysisUserInfo>();
             trigger_match_JP2[ijet] = ui.IsMatchedJP2();
             trigger_match_JP1[ijet] = ui.IsMatchedJP1();
             trigger_match_JP0[ijet] = ui.IsMatchedJP0();
             trigger_match_HT2[ijet] = ui.IsMatchedHT();
             jp_patch_adc[ijet]      = ui.GetJpAdc();
+            ht_adc_max[ijet]        = ui.GetHtAdc();
 
             vector<PseudoJet> constituents = sorted_by_pt(gr.orig.constituents()); // sort by pt
             ptLead[ijet] = constituents[0].pt();
@@ -310,9 +295,7 @@ int main(int argc, const char **argv)
             jet_area[ijet]     = gr.area;
             bg_density[ijet]   = gr.bg_density;
             pt_corrected[ijet] = gr.pt_corrected;
-            // detector-frame jet eta (BEMC front-face projection from origin):
-            //   detEta = asinh(sinh(eta_phys) + vz / 225.405)
-            // mirrors StJetCandidate::detEta(vertex) at BEMC_RADIUS = 225.405 cm.
+            // detector-frame jet eta, BEMC front-face projection from the origin
             det_eta[ijet] = std::asinh(std::sinh(gr.orig.eta()) + vz / 225.405);
             ijet++;
          }
@@ -327,8 +310,6 @@ int main(int argc, const char **argv)
       return -1;
    }
 
-   // Save the output
-
    fout->Write();
 
    ppana->GetHistogramManager().Write(fout, "QA_histograms");
@@ -337,40 +318,4 @@ int main(int argc, const char **argv)
 
    delete ppana;
    return 0;
-}
-
-//----------------------------------------------------------------------
-bool readinbadrunlist(vector<int> &badrun, TString csvfile)
-{
-
-   // open infile
-   std::string line;
-   std::ifstream inFile(csvfile);
-
-   std::cout << "Loading bad run id from " << csvfile.Data() << std::endl;
-   ;
-
-   if (!inFile.good()) {
-      std::cout << "Can't open " << csvfile.Data() << std::endl;
-      return false;
-   }
-
-   while (std::getline(inFile, line)) {
-      if (line.size() == 0)
-         continue; // skip empty lines
-      if (line[0] == '#')
-         continue; // skip comments
-
-      std::istringstream ss(line);
-      while (ss) {
-         std::string entry;
-         std::getline(ss, entry, ',');
-         int ientry = atoi(entry.c_str());
-         if (ientry) {
-            badrun.push_back(ientry);
-         }
-      }
-   }
-
-   return true;
 }

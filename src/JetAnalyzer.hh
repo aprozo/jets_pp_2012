@@ -1,55 +1,15 @@
 /** @file JetAnalyzer.hh
     @author Kauder:Kolja
-    @version Revision 0.1
-    @brief Light FastJet wrapper for Heavy Ion analysis
-    program file and the functions in that file.
-    @details Light FastJet wrapper for Heavy Ion analysis
-    program file and the functions in that file.
-    @date Mar 03, 2015
-*/
-
-/**
-   @mainpage
-   Light, unified wrapper for Fastjet 3.x to simplify common Heavy Ion tasks.
-
-   Design decisions:
-   - KISS. Please do event selection and track cleanup in the calling macro.
-   Provide this class with PseudoJets and try to stick to the FastJet way and
-   c++ stl functionality as much as possible.
-   - Derived from fastjet::ClusterSequenceArea.
-   - Typical heavy ion workflow:
-     - Fill with an event
-     - Cluster
-     - Do analysis. This may require minimal extra data (e.g. A_J) or more
-   information (e.g. jet-h)
-     - Tweak the jets (using selectors, transformers, filters, etc.), or the
-   underlying data a bit and repeat.
-   - FastJet Selectors are really meant to operate on the _result_ of a
-   clustering, but can be used on the original constituents as well.
-   - Therefore, we will keep a version of the original event, and request a
-   constituent selector to choose on which particles to actually perform the
-   analysis. A result selector can be used via default fastjet machinery.
-
-   Style:
-   - Doxygen comments should go in the header files.
-   - Please name your variables properly.
-   - Comment a lot.
-   - Please try to keep track of changes. Use version control.
-   - Please keep indentation clean. I'm using some combination of [K&R and GNU
-   style](http://en.wikipedia.org/wiki/Indent_style#Styles), but anything clean
-   works. If it gets messed up, open it in emacs, mark everything, and hit tab
-   once.
-*/
-
-/*
-  Author self-assessment statement: It gets the job done for A_J.
+    @brief Light wrapper around FastJet 3.x, derived from
+    fastjet::ClusterSequenceArea. Event selection and track cleanup belong in
+    the calling macro; this class is handed PseudoJets and clusters them. It
+    also carries the free helpers used with it: the constituent UserInfo, the
+    charge and dijet selectors, and the PseudoJet <-> ROOT conversions.
 */
 
 #ifndef JETANALYZER_H
 #define JETANALYZER_H
 
-// Includes and namespaces
-// #include "FastJet3.h"
 #include "fastjet/ClusterSequence.hh"
 #include "fastjet/ClusterSequenceActiveArea.hh"
 #include "fastjet/ClusterSequenceActiveAreaExplicitGhosts.hh"
@@ -75,15 +35,11 @@
 #include <algorithm>
 #include <utility>
 
-/** The main class.
- */
 class JetAnalyzer : public fastjet::ClusterSequenceArea {
 
 private:
-   /** Keep a copy of the original constituents.
-       In principle, they should be accessible via this->jets(),
-       but there is extra space allocated in that vector and I'd rather not muck
-      around with it.
+   /** Keep a copy of the original constituents. In principle they are reachable
+       via this->jets(), but that vector has extra space allocated in it.
     */
    std::vector<fastjet::PseudoJet> &OrigParticles;
 
@@ -108,15 +64,9 @@ private:
    fastjet::AreaDefinition *area_def_bkgd;
 
 public:
-   // ------------
-   // Constructors
-   // ------------
-   /** Standard constructor.
-       Pass through to Fastjet and set up internal background estimator with
-      default values. Note that initialization as ClusterSequenceArea( pHi,
-      jet_def, 0 ) works fine and skips the area computation. Instead, we provide
-      a second ctor and use this information to determine whether to provide
-      background capability.
+   /** Standard constructor: passes through to FastJet and sets up the internal
+       background estimator with default values. Presence of an AreaDefinition is
+       what enables the background capability, hence the second ctor below.
        \param InOrigParticles is the full set of constituent candidates. Passed
       by reference!
        \param JetDef is a fastjet::JetDefinition for the clustering. Passed by
@@ -135,8 +85,7 @@ public:
     */
    JetAnalyzer(std::vector<fastjet::PseudoJet> &InOrigParticles, fastjet::JetDefinition &JetDef);
 
-   /** Destructor. Take care of all the objects created with new.
-    */
+   /** Destructor. Take care of all the objects created with new. */
    ~JetAnalyzer()
    {
       if (area_def_bkgd) {
@@ -155,21 +104,10 @@ public:
          delete bkgd_subtractor;
          bkgd_subtractor = 0;
       }
-      // NOT SURE WHY THIS BREAKS
-      // Seems like the ownership is transferred...
-      // if ( scalarPtDensity ) {
-      //   delete scalarPtDensity;
-      //   scalarPtDensity = 0 ;
-      // }
+      // scalarPtDensity is deliberately NOT deleted here: ownership appears to
+      // pass to the background estimator, and deleting it crashes.
    };
 
-   // ----------------
-   // Analysis methods
-   // ----------------
-
-   // -------------
-   // Other Methods
-   // -------------
    /** Background functionality.
        Currently, the jet definition is hard-coded to fastjet::kt_algorithm,
       jet_def().R(), and the area definition is computed internally. Expand and
@@ -186,42 +124,21 @@ public:
       return bkgd_estimator;
    };
 
-   /**
-      Set BackgroundEstimator by hand
-    */
+   /** Set BackgroundEstimator by hand */
    void SetBackgroundEstimator(fastjet::JetMedianBackgroundEstimator *bge) { bkgd_estimator = bge; };
 
-   // ---------
-   // Operators
-   // ---------
-   // May eventually be added.
-   // bool operator==(JetAnalyzer& rhs);
-
-   // -------
-   // Helpers
-   // -------
-   /** The nth version of this important constant.
-    */
    static const double pi;
 
-   /** Returns an angle between -pi and pi
-    */
+   /** Returns an angle between -pi and pi */
    static double phimod2pi(double phi);
 };
 
-// NOT part of the class!
+// The remainder is NOT part of the class.
 // =============================================================================
-/** Dijet finding as a Selector. Fashioned after fastjet::SW_NHardest.
+/** Dijet finding as a Selector, fashioned after fastjet::SW_NHardest.
     Searches for and returns dijet pairs within |&phi;1 - &phi;2 - &pi;| <
-   &Delta;&phi;. returns 0 if no pair is found. In the current implementation,
-   only the top two jets are compared.
-
-    NOTE: Could also use something like
-    \code
-    Selector sel = SelectorCircle( dPhi );
-    sel.set_reference( -jet1 ); // Pseudocode
-    vector<PseudoJet> jets_near_MinusJet1 = sel(jets);
-    \endcode
+   &Delta;&phi;. Returns 0 if no pair is found. Only the top two jets are
+   compared.
  */
 class SelectorDijetWorker : public fastjet::SelectorWorker {
 public:
@@ -242,7 +159,7 @@ public:
    /// Returns false, we need a jet ensemble.
    bool applies_jet_by_jet() const { return false; };
 
-   /// Returns false, we need a jet ensemble.
+   /// Never valid on a single jet; throws.
    bool pass(const fastjet::PseudoJet &pj) const
    {
       if (!applies_jet_by_jet())
@@ -258,8 +175,7 @@ private:
                       ///< < &Delta;&phi;
 };
 
-/** Helper for sorting pairs by second argument
- */
+/** Helper for sorting pairs by second argument */
 struct sort_IntDoubleByDouble {
    /// returns left.second < right.second
    bool operator()(const std::pair<int, double> &left, const std::pair<int, double> &right)
@@ -267,70 +183,34 @@ struct sort_IntDoubleByDouble {
       return left.second < right.second;
    }
 };
-/** Determines whether two vector sets are matched 1 to 1.
-    Actual Dijet selector
+/** The actual dijet selector.
     \param dPhi: Dijet acceptance angle &Delta;&phi;
  */
 fastjet::Selector SelectorDijets(const double dPhi = 0.4);
 
 // =============================================================================
-/** Determines whether two vector sets are matched 1 to 1.
-    Could return something like lists of matches, but
-    for now it's using a primitive 1-to-1 matching.
-    Enforcing 1-to-1 to avoid pathologies.
-    For dijet A_J, the implementation is already overkill, but I want to
-    lay the groundwork for more complex tasks
+/** Determines whether two vector sets are matched 1 to 1. Enforcing 1-to-1
+    avoids pathologies.
  */
 bool IsMatched(const std::vector<fastjet::PseudoJet> &jetset1, const std::vector<fastjet::PseudoJet> &jetset2,
                const double Rmax);
 
-/** Check if one of the jets in jetset1 matches the reference.
-    TODO: Could use this in the vector-vector version
- */
+/** Check if one of the jets in jetset1 matches the reference. */
 bool IsMatched(const std::vector<fastjet::PseudoJet> &jetset1, const fastjet::PseudoJet &reference, const double Rmax);
 
-/** Check if jet and jet2 are matched
-    TODO: Could use this in the vector versions
- */
+/** Check if jet1 and jet2 are matched */
 bool IsMatched(const fastjet::PseudoJet &jet1, const fastjet::PseudoJet &jet2, const double Rmax);
 
 // =============================================================================
-/** The best way to interface vector<PseudoJet> with ROOT seems to be via
-    TClonesArray<TLorentzVector>, so we'll provide some ways to go back and
-   forth between them.
+/** vector<PseudoJet> is interfaced with ROOT via TClonesArray<TLorentzVector>,
+    so these convert back and forth.
 */
-// ------------------------------------------------------------------------
 TLorentzVector MakeTLorentzVector(const fastjet::PseudoJet &pj);
-// ------------------------------------------------------------------------
-
-// //
-// =============================================================================
-// Experimental, not working.
-// Should work if this class is _instantiated_ and then the instance is used.
-// That's not really the usage scenario.
-// class MakeTLorentzVector : public
-// fastjet::FunctionOfPseudoJet<TLorentzVector>{
-//   TLorentzVector result(const fastjet::PseudoJet &pj) const{
-//     return TLorentzVector( pj.px(), pj.py(), pj.pz(), pj.E() );
-//   };
-//   std::string description() const {return "Translates Pseudojet into ROOT
-//   TLorentzVector";} TLorentzVector operator()(const fastjet::PseudoJet & pj)
-//   const {return result(pj);};
-// };
-
-// =============================================================================
-/** The best way to interface vector<PseudoJet> with ROOT seems to be via
-    TClonesArray<TLorentzVector>, so we'll provide some ways to go back and
-   forth between them. Pretty redundant, PseudoJet is a smart class and does all
-   the work.
-*/
 fastjet::PseudoJet MakePseudoJet(const TLorentzVector *const lv);
-// =============================================================================
-// =============================================================================
 
-/** Simple UserInfo. Derived from PseudoJet::UserInfoBase.
-    Currently just providing charge, please add as appropriate.
-    Based on 09-user__info_8cc_source.cc
+// =============================================================================
+/** Constituent- and jet-level payload attached to a PseudoJet, derived from
+    PseudoJet::UserInfoBase.
  */
 class JetAnalysisUserInfo : public fastjet::PseudoJet::UserInfoBase {
 public:
@@ -338,7 +218,7 @@ public:
    JetAnalysisUserInfo(int quarkcharge = -999, int pid = -9999, std::string tag = "", float number = -1)
       : quarkcharge(quarkcharge), pid(pid), tag(tag), number(number) {};
 
-   /// Charge in units of e/3
+   /// Charge in units of e
    int GetQuarkCharge() const { return quarkcharge; };
 
    int GetPID() const { return pid; };
@@ -354,8 +234,9 @@ public:
    bool IsMatchedJP() const { return match_jp; };
    void SetMatchJP(const bool b) { match_jp = b; };
 
-   // Per-threshold JP-patch matches (isJP0/isJP1/isJP2) — NOT degenerate, for
-   // per-trigger response/data combination. (IsMatchedJP() = configured-trigger one.)
+   // Per-threshold JP-patch matches, set independently of each other, for
+   // per-trigger response/data combination. IsMatchedJP() is the match for the
+   // trigger this job was configured with.
    bool IsMatchedJP0() const { return match_jp0; };
    void SetMatchJP0(const bool b) { match_jp0 = b; };
    bool IsMatchedJP1() const { return match_jp1; };
@@ -374,9 +255,14 @@ public:
 
    int GetJpAdc() const { return jp_adc; };
    void SetJpAdc(const int a) { jp_adc = a; };
+   int GetHtAdc() const { return ht_adc; };
+   void SetHtAdc(const int a) { ht_adc = a; };
+
+   float GetsDCAxy() const { return sdcaxy; };
+   void SetsDCAxy(const float s) { sdcaxy = s; };
 
 private:
-   const int quarkcharge; ///< Charge in units of e/3
+   const int quarkcharge; ///< Charge in units of e
    const int pid;
    std::string tag; ///< Multi-purpose
    float number;    ///< Multi-purpose
@@ -388,17 +274,13 @@ private:
    bool match_ht;
    int lead_tower_id = -1; ///< BEMC tower id of leading neutral constituent (-1 if none)
    int jp_adc = -1;        ///< near-max JP-patch ADC (>JP0) matched to jet (-1 if none)
+   int ht_adc = -1;        ///< max DSM high-tower ADC of the jet's towers (-1 if none above BHT1)
+   float sdcaxy = -999;    ///< track signed transverse DCA (charged constituents; for leading-track fake veto)
 };
 
 // =============================================================================
-/** This shows how we can build a Selector that uses the user-defined
-    information to select particles by charge.
+/** Selects particles by the charge stored in their JetAnalysisUserInfo.
     Charge is in units of e/3!
-
-    To create a user-defined Selector, the first step is to
-    create its associated "worker" class, i.e. to derive a class from
-    SelectorWorker. Then (see below), we just write a function
-    that creates a Selector with the appropriate worker class.
 */
 class SelectorChargeWorker : public fastjet::SelectorWorker {
 public:
@@ -421,9 +303,8 @@ public:
    bool pass(const fastjet::PseudoJet &p) const
    {
       // FastJet's `&&` between selectors does NOT short-circuit, so ghosts
-      // injected by ClusterSequenceArea reach this predicate even when
-      // composed via `NotGhost && SelectorChargeRange(...)`. Guard against
-      // missing user_info.
+      // injected by ClusterSequenceArea reach this predicate even when composed
+      // as `NotGhost && SelectorChargeRange(...)` — hence these guards.
       if (p.is_pure_ghost()) return false;
       if (!p.has_user_info<JetAnalysisUserInfo>()) return false;
       const int &quarkcharge = p.user_info<JetAnalysisUserInfo>().GetQuarkCharge();
@@ -434,18 +315,12 @@ private:
    const int cmin; ///< inclusive lower bound
    const int cmax; ///< inclusive upper bound
 };
-// =============================================================================
-/** the function that allows to write simply
-
-    Selector sel = SelectorChargeRange( cmin, cmax );
-*/
+/** Builds the selector: Selector sel = SelectorChargeRange( cmin, cmax ); */
 fastjet::Selector SelectorChargeRange(const int cmin = -999, const int cmax = 999);
 
 // =============================================================================
-// =============================================================================
-// =============================================================================
-/** Helper to get an enum from a string
-    we'll allow some more generous spellings and abbreviations
+/** Helper to get a jet-algorithm enum from a string; some generous spellings
+    and abbreviations are accepted.
 */
 fastjet::JetAlgorithm AlgoFromString(std::string s);
 
